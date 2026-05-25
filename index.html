@@ -1,0 +1,585 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ROOMS — агрегатор приватных площадок</title>
+  <style>
+    :root{--bg:#0d1222;--surface:#161c32;--line:#2a3356;--text:#eef1ff;--muted:#a7b0d3;--accent:#6d8bff;--good:#2ed09b}
+    body.light{--bg:#f3f6ff;--surface:#ffffff;--line:#c6d2ff;--text:#17203a;--muted:#4e5f8f;--accent:#4f63db;--good:#158f68}
+    *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,system-ui,Segoe UI,Arial}
+    .wrap{max-width:1080px;margin:0 auto;padding:16px}.hidden{display:none}
+    .nav{position:sticky;top:0;z-index:20;display:flex;gap:8px;flex-wrap:wrap;align-items:center;background:rgba(8,12,24,.85);backdrop-filter:blur(6px);padding:10px;border:1px solid var(--line);border-radius:12px;margin-bottom:12px}
+    .drawer{position:fixed;top:0;left:0;height:100%;width:280px;background:#111a35;border-right:1px solid #32427a;transform:translateX(-105%);transition:.25s ease;z-index:40;padding:14px;display:flex;flex-direction:column;gap:8px}
+    .drawer.open{transform:translateX(0)}
+    .drawer-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;z-index:39}
+    .drawer-backdrop.show{display:block}
+    .hero,.card{padding:16px;border-radius:14px;border:1px solid var(--line);background:linear-gradient(180deg,#1a2446,#121a33);margin-bottom:12px}
+    .card{background:var(--surface)}
+    .actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+    .btn{padding:12px;border-radius:12px;border:1px solid #30407a;background:#151f3f;color:#fff;font-weight:700;cursor:pointer;text-align:center;transition:.2s ease}
+    .btn.primary{background:linear-gradient(135deg,var(--accent),#8f73ff);border:none}.btn:hover{transform:translateY(-1px);box-shadow:0 6px 14px rgba(0,0,0,.25)}
+    .btn.ghost{background:transparent;border:1px dashed #5064a8;color:#c8d1ff}
+    .btn.active{background:#24315e;border-color:#6d8bff}
+    .theme-btn{margin-left:auto}
+    @media (max-width: 760px){
+      .nav button:not(#openDrawer){display:none}
+      .wrap{padding:10px}
+      .hero,.card{padding:12px}
+      .thumb{height:120px}
+      .row{flex-direction:column;align-items:flex-start}
+      .sort-wrap{width:100%}
+      .sort-wrap select{width:100%}
+      .modal{max-height:90vh;overflow:auto}
+    }
+    .grid{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(165px,1fr))}
+    input,select{width:100%;padding:11px;border-radius:10px;border:1px solid #33406b;background:#11172e;color:#fff}
+    .chips{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}.chip{display:inline-flex;align-items:center;gap:8px;padding:8px 12px;border-radius:999px;background:#11182f;border:1px solid #33406b;font-size:13px}
+    .chip input{width:auto;margin:0;accent-color:#6d8bff}.chip.disabled{opacity:.45;pointer-events:none}
+    .banner{padding:12px;border-radius:12px;background:#101938;border:1px dashed #3a4e8f;margin:8px 0}
+    .list{display:grid;gap:10px}.venue{padding:12px;border:1px solid #2a3558;background:#11172d;border-radius:12px;cursor:pointer}
+    .thumb{width:100%;height:140px;object-fit:cover;border-radius:10px;margin-bottom:8px;border:1px solid #2e3b66}
+    .row{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap}.muted{color:var(--muted)} .price{font-weight:700}.rating{color:var(--good);font-weight:700}.meta-block{margin:8px 0}
+    .topbar{display:flex;justify-content:space-between;gap:8px;align-items:center;margin-bottom:10px}
+    .sort-wrap{display:flex;align-items:center;gap:8px}
+    .search-input{order:99;flex:1 1 340px;min-width:240px;max-width:360px}
+    .modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;padding:16px}
+    .modal{max-width:680px;width:100%;background:#121a33;border:1px solid #32427a;border-radius:14px;padding:14px}
+    .modal h3{margin:0 0 8px}.modal .close{float:right;border-radius:999px;width:36px;height:36px;padding:0;font-size:18px;display:inline-flex;align-items:center;justify-content:center}
+    .toast{position:fixed;right:16px;bottom:16px;background:#121a33;border:1px solid #3a4e8f;color:#fff;padding:12px 14px;border-radius:10px;display:none;z-index:30}
+    .booking-comment{width:100%;padding:10px;border-radius:10px;border:1px solid #33406b;background:#11172e;color:#fff;resize:vertical;min-height:78px}
+    body.light .nav{background:rgba(255,255,255,.92);border-color:#c7d4ff;box-shadow:0 8px 20px rgba(49,74,148,.12)}
+    body.light .hero{background:linear-gradient(135deg,#dfe8ff,#cfdcff);border-color:#bacbff;color:#132042}
+    body.light .card{background:linear-gradient(180deg,#ffffff,#f7f9ff);border-color:#c7d4ff;box-shadow:0 8px 24px rgba(58,84,158,.08)}
+    body.light .btn{background:#f0f4ff;border-color:#b8c9ff;color:#1a2a55}
+    body.light .btn.ghost{background:#f7f9ff;border-color:#95adf9;color:#29407d}
+    body.light .btn.active{background:#dce6ff;border-color:#7d97ea;color:#162752}
+    body.light input, body.light select, body.light textarea{background:#fff !important;border-color:#b7c7f7 !important;color:#1a2748 !important}
+    body.light .venue{background:#fff;border-color:#c8d4ff}
+    body.light .thumb{border-color:#c8d4ff}
+    body.light .banner{background:#eaf0ff;border-color:#a6baf6;color:#203468}
+    body.light .chip{background:#f6f8ff;border-color:#c0cdf8;color:#23386d}
+    body.light .modal{background:#fff;border-color:#c0cff8;color:#18264a}
+    body.light .toast{background:#fff;border-color:#a9bff9;color:#1c2d57}
+    .fav-icon{font-size:18px;line-height:1;display:inline-block;transform:translateY(1px)}
+    .fav-icon.active{color:#ff4d6d}
+
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <nav class="nav">
+    <button class="btn" id="openDrawer">☰ Меню</button>
+    <button class="btn ghost" id="navHome">Главная</button>
+    <button class="btn ghost" id="navSearch">Подбор</button>
+    <button class="btn ghost" id="navCatalog">Площадки</button>
+    <button class="btn ghost" id="navFav">Избранное</button>
+    <button class="btn ghost" id="navBooking">Бронь</button>
+    <button class="btn ghost" id="navHistory">История</button>
+    <button class="btn ghost" id="navPartner">Партнёрам</button>
+    <button class="btn ghost theme-btn" id="themeToggle" aria-label="Переключить тему" title="Переключить тему">☀/🌙</button>
+    <input id="globalSearch" placeholder="Поиск площадки..." class="search-input" style="max-width:360px">
+  </nav>
+  
+  
+  <div id="drawerBackdrop" class="drawer-backdrop"></div>
+  <aside id="sideDrawer" class="drawer">
+    <button class="btn ghost" id="closeDrawer">✕ Закрыть</button>
+    <button class="btn ghost" id="dNavHome">Главная</button>
+    <button class="btn ghost" id="dNavSearch">Подбор</button>
+    <button class="btn ghost" id="dNavCatalog">Площадки</button>
+    <button class="btn ghost" id="dNavFav">Избранное</button>
+    <button class="btn ghost" id="dNavBooking">Бронь</button>
+    <button class="btn ghost" id="dNavHistory">История</button>
+    <button class="btn ghost" id="dNavPartner">Партнёрам</button>
+  </aside>
+
+  <section class="hero">
+    <h1>ROOMS</h1>
+    <p>Находите и бронируйте приватные площадки для встреч, праздников и отдыха.</p>
+  </section>
+
+  <section class="card" id="entryView">
+    <h2>Как вам удобнее начать?</h2>
+    <div class="actions">
+      <button class="btn primary" id="entryTime">Подобрать по времени</button>
+      <button class="btn" id="entryCatalog">Смотреть площадки</button>
+    </div>
+  </section>
+
+  <section class="card hidden" id="searchView">
+    <div class="topbar">
+      <h2 style="margin:0">Подбор по времени</h2>
+      <button class="btn ghost" id="changeMindFromSearch">Я передумал</button>
+    </div>
+    <div class="grid">
+      <div><label>Город</label><select><option>Воронеж</option></select></div>
+      <div><label>Тип отдыха</label><select id="eventType"><option value="kids_birthday">Детский день рождения</option><option value="family">Семейный отдых</option><option value="friends">Компания друзей</option><option value="date">Свидание</option><option value="corporate">Корпоратив</option></select></div>
+      <div><label>Возраст гостей</label><select id="ageMode"><option value="with_minors">Есть гости до 18</option><option value="adults_only">Только 18+</option></select></div>
+      <div><label>Дата</label><input type="date" id="date"></div>
+      <div><label>Время</label><select id="time"></select></div>
+      <div><label>Длительность (часы)</label><input id="searchHours" type="number" min="2" max="12" step="1" value="2"></div>
+      <div><label>Гостей</label><input id="guests" type="number" min="1" value="6"></div>
+      <div><label>Еда</label><select id="food"><option value="any">Не важно</option><option value="inhouse">Еда в заведении</option><option value="own">Можно со своей</option></select></div>
+      <div><label>Оплата</label><select id="payment"><option value="any">Не важно</option><option value="card">Карта</option><option value="cash">Наличка</option></select></div>
+    </div>
+    <div class="chips">
+      <label class="chip" for="ps"><input type="checkbox" id="ps"> PlayStation</label>
+      <label class="chip" for="xbox"><input type="checkbox" id="xbox"> Xbox</label>
+      <label class="chip" for="proj"><input type="checkbox" id="proj"> Проектор</label>
+      <label class="chip" for="karaoke"><input type="checkbox" id="karaoke"> Караоке</label>
+      <label class="chip" for="hookah" id="hookahChip"><input type="checkbox" id="hookah"> Кальян</label>
+      <label class="chip" for="boardgames"><input type="checkbox" id="boardgames"> Настолки</label>
+      <label class="chip" for="animator"><input type="checkbox" id="animator"> Аниматоры</label>
+    </div>
+    <p class="muted" id="ageHint"></p>
+    <div class="row"><button class="btn primary" id="searchBtn">Найти свободные</button><button class="btn ghost" id="resetFilters">Сбросить фильтры</button></div>
+  </section>
+
+  <section class="card hidden" id="catalogView">
+    <div class="topbar">
+      <h2 style="margin:0">Доступные площадки</h2>
+      <button class="btn ghost" id="changeMindFromCatalog">Я передумал</button>
+    </div>
+    <div class="row"><p class="muted">Каталог заведений и рекомендации по отзывам.</p><div class="sort-wrap"><label class="muted">Сортировка</label> <select id="catalogSort"><option value="rating">По рейтингу</option><option value="price_asc">Цена ↑</option><option value="price_desc">Цена ↓</option></select></div></div>
+    <div id="recommended" class="list"></div>
+  </section>
+
+  <section class="card hidden" id="resultsView"><div class="row"><h2>Результаты поиска</h2><div class="sort-wrap"><label class="muted">Сортировка</label><select id="resultsSort"><option value="rating">По рейтингу</option><option value="price_asc">Цена ↑</option><option value="price_desc">Цена ↓</option></select></div></div><div id="results" class="list"></div></section>
+  
+  <section class="card hidden" id="favoritesView">
+    <h2>Избранные площадки</h2>
+    <p class="muted" id="favoritesHint">Добавьте площадки в избранное, чтобы быстро вернуться к ним.</p>
+    <div id="favoritesList" class="list"></div>
+  </section>
+
+  <section class="card hidden" id="bookingView">
+    <h2>Быстрое бронирование выбранного заведения</h2>
+    <p id="bookingVenue" class="muted">Заведение не выбрано.</p>
+    <div class="grid">
+      <div><label>Дата</label><input type="date" id="bookingDate"></div>
+      <div><label>Время</label><select id="bookingTime"></select></div>
+      <div><label>Длительность (часы)</label><input id="bookingHours" type="number" min="2" max="12" step="1" value="2"></div>
+      <div><label>Гостей</label><input id="bookingGuests" type="number" min="1" value="4"></div>
+      <div><label>Телефон для связи</label><input id="bookingPhone" placeholder="+7..." type="tel"></div>
+      <div><label>Телефон другого получателя (опционально)</label><input id="bookingAltPhone" placeholder="+7..." type="tel"></div>
+    </div>
+    <div style="margin-top:10px"><label>Комментарий / пожелания</label><textarea id="bookingComment" class="booking-comment" rows="3" placeholder="Например: нужен флипчарт, детский стул, подготовить комнату к дню рождения"></textarea></div>
+    <label class="chip" style="margin-top:10px" for="bookingConsent"><input id="bookingConsent" type="checkbox"> Согласен на обработку персональных данных</label>
+    <button class="btn primary" id="checkBooking" style="margin-top:10px" disabled>Проверить и забронировать</button>
+    <p id="bookingStatus" class="muted"></p>
+    <div id="bookingSummary" class="banner">Итог: выберите заведение и параметры брони.</div>
+  </section>
+
+  
+
+  <section class="card hidden" id="historyView">
+    <h2>История бронирований</h2>
+    <p class="muted">Последние заявки, созданные в демо-режиме.</p>
+    <div id="historyList" class="list"></div>
+  </section>
+
+  <section class="card hidden" id="partnerView">
+    <h2>Подключить площадку</h2>
+    <p class="muted">Оставьте заявку, и мы свяжемся с вами.</p>
+    <div class="grid">
+      <div><label>Город</label><input id="pCity" placeholder="Например: Воронеж"></div>
+      <div><label>Название площадки</label><input id="pName" placeholder="Например: ROOMS Center"></div>
+      <div><label>Контактное лицо</label><input id="pContact" placeholder="Имя и фамилия"></div>
+      <div><label>Телефон / Telegram</label><input id="pPhone" placeholder="+7... или @username"></div>
+    </div>
+    <button class="btn primary" id="sendPartnerLead" style="margin-top:10px">Отправить заявку</button>
+    <p id="partnerStatus" class="muted"></p>
+  </section>
+
+</div>
+  <div class="modal-backdrop" id="venueModal" role="dialog" aria-modal="true" aria-labelledby="modalTitle" aria-hidden="true">
+    <div class="modal">
+      <button class="btn ghost close" id="closeModal" aria-label="Закрыть">✕</button>
+      <h3 id="modalTitle">Площадка</h3>
+      <img id="modalImg" class="thumb" src="" alt="venue">
+      <p id="modalMeta" class="muted"></p>
+      <div class="meta-block"><strong>Описание:</strong><p id="modalDesc" class="muted"></p></div>
+      <div class="meta-block"><strong>Режим работы:</strong> <span id="modalHours" class="muted"></span></div>
+      <div class="meta-block"><strong>Адрес:</strong> <span id="modalAddress" class="muted"></span></div>
+      <div class="meta-block"><strong>Что доступно:</strong><div class="chips" id="modalTags"></div></div>
+      <div class="meta-block"><strong>Отзывы:</strong><p id="modalReviews" class="muted"></p></div>
+      <button class="btn primary" id="bookFromModal">Забронировать это заведение</button>
+    </div>
+  </div>
+
+
+<div id="toast" class="toast"></div>
+<script>
+let rooms=[
+{id:1,venue:'Kids Loft',room:'Small',cap:8,price:1400,rating:4.9,img:'https://images.unsplash.com/photo-1519677100203-a0e668c92439?w=1200&q=80',food:['inhouse','own'],eq:['ps','proj','boardgames'],busy:['18:00'],age_policy:'kids_or_family',events:['kids_birthday','family'],payments:['card','cash'],desc:'Уютная площадка для детских праздников и семейных встреч.',hours:'10:00–22:00',address:'Воронеж, ул. Праздничная, 10',reviews:'4.9 · 126 отзывов',review_items:['Очень уютно, дети в восторге','Чисто, удобно, вернемся еще']},
+{id:2,venue:'Cinema Family',room:'Medium',cap:14,price:1500,rating:4.8,img:'https://images.unsplash.com/photo-1470229722913-7c0e2dbbafd3?w=1200&q=80',food:['inhouse','own'],eq:['xbox','karaoke','boardgames','animator'],busy:['19:00'],age_policy:'mixed',events:['family','friends','date'],payments:['card'],desc:'Кинозал с семейной атмосферой и караоке-вечерами.',hours:'11:00–23:00',address:'Воронеж, пр-т Центральный, 25',reviews:'4.8 · 94 отзыва',review_items:['Хороший звук и проектор','Комфортная семейная атмосфера']},
+{id:3,venue:'Lounge 18+',room:'Large',cap:20,price:1700,rating:4.7,img:'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=1200&q=80',food:['inhouse'],eq:['ps','xbox','proj','karaoke','hookah','boardgames'],busy:['18:00','19:00'],age_policy:'adults_only',events:['friends','date','corporate'],payments:['card','cash'],desc:'Лаунж-пространство 18+ для компаний и свиданий.',hours:'14:00–03:00',address:'Воронеж, ул. Ночная, 7',reviews:'4.7 · 172 отзыва',review_items:['Стильный лаунж, отличный сервис','Идеально для вечерних встреч']},
+{id:4,venue:'Party Spot',room:'Medium+',cap:12,price:1450,rating:4.6,img:'https://images.unsplash.com/photo-1528605248644-14dd04022da1?w=1200&q=80',food:['inhouse','own'],eq:['proj','karaoke','animator'],busy:[],age_policy:'mixed',events:['friends','family','corporate'],payments:['cash'],desc:'Гибридная площадка для мероприятий и дружеских встреч.',hours:'10:00–00:00',address:'Воронеж, ул. Событийная, 3',reviews:'4.6 · 58 отзывов',review_items:['Удобно для небольших мероприятий','Нормальные цены и расположение']}
+]; // TODO: убрать тестовые карточки перед продом и подключить реальные данные
+
+
+const REQUIRED_FOOD_OPTIONS=['inhouse','own'];
+const LS_FAV='rooms_favorites';
+const LS_LAST_VIEW='rooms_last_view';
+const LS_BOOKINGS='rooms_booking_history';
+const LS_THEME='rooms_theme';
+const LS_SEARCH='rooms_search_state';
+function ensureFoodOptions(room){
+  const current=Array.isArray(room.food)?room.food:[];
+  const merged=[...new Set([...current,...REQUIRED_FOOD_OPTIONS])];
+  return {...room,food:merged};
+}
+const getNormalizedRooms = () => rooms.map(ensureFoodOptions);
+
+const times=[];for(let h=10;h<=23;h++)times.push(String(h).padStart(2,'0')+':00');
+const t=document.getElementById('time');const bt=document.getElementById('bookingTime');
+const searchDateEl=document.getElementById('date');
+const guestsEl=document.getElementById('guests');
+const searchHoursEl=document.getElementById('searchHours');
+const psEl=document.getElementById('ps'),xboxEl=document.getElementById('xbox'),projEl=document.getElementById('proj'),karaokeEl=document.getElementById('karaoke'),hookahEl=document.getElementById('hookah');
+const boardgames=document.getElementById('boardgames'),animator=document.getElementById('animator');
+const foodEl=document.getElementById('food');
+const paymentEl=document.getElementById('payment');
+const navHomeBtn=document.getElementById('navHome'),navSearchBtn=document.getElementById('navSearch'),navCatalogBtn=document.getElementById('navCatalog'),navFavBtn=document.getElementById('navFav'),navBookingBtn=document.getElementById('navBooking'),navPartnerBtn=document.getElementById('navPartner'),navHistoryBtn=document.getElementById('navHistory');
+const entryTimeBtn=document.getElementById('entryTime'),entryCatalogBtn=document.getElementById('entryCatalog');
+const changeMindFromSearchBtn=document.getElementById('changeMindFromSearch'),changeMindFromCatalogBtn=document.getElementById('changeMindFromCatalog');
+times.forEach(x=>{const o=document.createElement('option');o.textContent=x;t.append(o);const o2=document.createElement('option');o2.textContent=x;bt.append(o2);});
+searchDateEl.valueAsDate=new Date();
+document.getElementById('bookingDate').valueAsDate=new Date();
+
+const entryView=document.getElementById('entryView'),searchView=document.getElementById('searchView'),catalogView=document.getElementById('catalogView'),resultsView=document.getElementById('resultsView'),favoritesView=document.getElementById('favoritesView'),bookingView=document.getElementById('bookingView'),partnerView=document.getElementById('partnerView'),historyView=document.getElementById('historyView');
+function setActiveNav(section){['navHome','navSearch','navCatalog','navFav','navBooking','navPartner','navHistory'].forEach(id=>document.getElementById(id).classList.remove('active')); if(section==='entry') navHomeBtn.classList.add('active'); if(section==='search') navSearchBtn.classList.add('active'); if(section==='catalog') navCatalogBtn.classList.add('active'); if(section==='favorites') navFavBtn.classList.add('active'); if(section==='booking') navBookingBtn.classList.add('active'); if(section==='partner') navPartnerBtn.classList.add('active'); if(section==='history') navHistoryBtn.classList.add('active');}
+function show(view){entryView.classList.add('hidden');searchView.classList.add('hidden');catalogView.classList.add('hidden');favoritesView.classList.add('hidden');bookingView.classList.add('hidden');partnerView.classList.add('hidden');historyView.classList.add('hidden');resultsView.classList.add('hidden');if(view==='entry'){entryView.classList.remove('hidden');}if(view==='search'){searchView.classList.remove('hidden');}if(view==='catalog'){catalogView.classList.remove('hidden');}if(view==='favorites'){favoritesView.classList.remove('hidden');}if(view==='booking'){bookingView.classList.remove('hidden');}if(view==='partner'){partnerView.classList.remove('hidden');}if(view==='history'){historyView.classList.remove('hidden');}setActiveNav(view); localStorage.setItem(LS_LAST_VIEW, view)}
+
+function selectedEq(){return [psEl,xboxEl,projEl,karaokeEl,hookahEl,boardgames,animator].filter(el=>el.checked).map(el=>el.id)}
+function matchesAgePolicy(room,ageMode){
+  return ageMode==='adults_only'
+    ? room.age_policy==='adults_only' || room.age_policy==='mixed'
+    : room.age_policy!=='adults_only';
+}
+function pass(r,g,food,payment,eq,eventType,ageMode){return r.cap>=g&&(food==='any'||r.food.includes(food))&&(payment==='any'||(r.payments||[]).includes(payment))&&eq.every(e=>r.eq.includes(e))&&r.events.includes(eventType)&&matchesAgePolicy(r,ageMode);}
+function labelTag(t){return ({ps:'PlayStation',xbox:'Xbox',proj:'Проектор',karaoke:'Караоке',hookah:'Кальян',boardgames:'Настолки',animator:'Аниматоры',card:'Оплата картой',cash:'Оплата наличными'})[t]||t;}
+function foodLabel(f){return ({inhouse:'Еда в заведении',own:'Можно со своей едой'})[f]||f;}
+const favorites=new Set(JSON.parse(localStorage.getItem(LS_FAV)||'[]'));
+
+function textMatch(room, q){
+  if(!q) return true;
+  const s=(room.venue+' '+room.room+' '+(room.desc||'')).toLowerCase();
+  return s.includes(q.toLowerCase());
+}
+function getQuery(){return (globalSearch.value||'').trim();}
+function saveSearchState(){
+  const state={
+    eventType:eventType.value,
+    ageMode:ageMode.value,
+    date:searchDateEl.value,
+    time:t.value,
+    guests:guestsEl.value,
+    searchHours:searchHoursEl.value,
+    food:foodEl.value,
+    payment:paymentEl.value,
+    eq:selectedEq(),
+    query:globalSearch.value||''
+  };
+  localStorage.setItem(LS_SEARCH, JSON.stringify(state));
+}
+function loadSearchState(){
+  const raw=localStorage.getItem(LS_SEARCH);
+  if(!raw) return;
+  try{
+    const state=JSON.parse(raw);
+    if(state.eventType) eventType.value=state.eventType;
+    if(state.ageMode) ageMode.value=state.ageMode;
+    if(state.date) searchDateEl.value=state.date;
+    if(state.time) t.value=state.time;
+    if(state.guests) guestsEl.value=state.guests;
+    if(state.searchHours) searchHoursEl.value=state.searchHours;
+    if(state.food) foodEl.value=state.food;
+    if(state.payment) paymentEl.value=state.payment;
+    ['ps','xbox','proj','karaoke','hookah','boardgames','animator'].forEach(id=>document.getElementById(id).checked=(state.eq||[]).includes(id));
+    globalSearch.value=state.query||'';
+  }catch(_){ localStorage.removeItem(LS_SEARCH); }
+}
+
+function sortRooms(list, mode){
+  const arr=[...list];
+  if(mode==='price_asc') return arr.sort((a,b)=>a.price-b.price);
+  if(mode==='price_desc') return arr.sort((a,b)=>b.price-a.price);
+  return arr.sort((a,b)=>b.rating-a.rating);
+}
+function venueCard(r,slot){const fav=favorites.has(r.id);return `<div class='venue' onclick='openVenue(${r.id})'><img class='thumb' src='${r.img}' alt='${r.venue}'><div class='row'><strong>${r.venue} — ${r.room} <span class='rating'>★ ${r.rating}</span></strong><span class='price'>${r.price} ₽/ч</span></div><div class='row'><span class='muted'>До ${r.cap} гостей ${slot?('· '+slot):''}</span><span class='muted'>${r.reviews||''}</span></div><button class='btn ghost' onclick='event.stopPropagation();toggleFav(${r.id})'><span class='fav-icon ${fav?'active':''}'>${fav?'♥':'♡'}</span> Избранное</button></div>`}
+function near(time){const i=times.indexOf(time);return [1,-1,2,-2].map(d=>times[i+d]).filter(Boolean)}
+function isAvailableForDuration(room,startTime,hours){
+  const start=times.indexOf(startTime);
+  if(start<0) return false;
+  if(start+hours>times.length) return false;
+  for(let i=0;i<hours;i++){
+    if(room.busy.includes(times[start+i])) return false;
+  }
+  return true;
+}
+function normalizeHours(value){
+  return Math.min(12, Math.max(2, +value||2));
+}
+
+function formatPhone(raw){
+  const digits=(raw||'').replace(/\D/g,'');
+  const normalized=digits.startsWith('8') ? '7'+digits.slice(1) : digits;
+  if(normalized.length<11) return {ok:false,value:'+'+normalized};
+  const v=normalized.slice(0,11);
+  const pretty=`+${v[0]} (${v.slice(1,4)}) ${v.slice(4,7)}-${v.slice(7,9)}-${v.slice(9,11)}`;
+  return {ok:v.length===11,value:pretty};
+}
+function bookingPricePerHour(){
+  const v=getNormalizedRooms().find(x=>x.id===selectedVenueId);
+  return v ? v.price : 0;
+}
+function updateBookingSummary(){
+  const hours=normalizeHours(bookingHours.value);
+  bookingHours.value=hours;
+  const guests=+bookingGuests.value||1;
+  const pph=bookingPricePerHour();
+  const total=pph*hours;
+  bookingSummary.textContent=pph
+    ? `Итог: ${pph} ₽/ч × ${hours} ч = ${total} ₽ · ${guests} гостей`
+    : 'Итог: выберите заведение и параметры брони.';
+}
+function isPastDate(value){
+  if(!value) return false;
+  const selected=new Date(value+'T00:00:00');
+  const today=new Date();
+  today.setHours(0,0,0,0);
+  return selected<today;
+}
+function renderRecommended(){
+  const top=sortRooms(getNormalizedRooms().filter(r=>textMatch(r,getQuery())), catalogSort.value).slice(0,6);
+  document.getElementById('recommended').innerHTML = top.length
+    ? top.map(r=>venueCard(r,'')).join('')
+    : '<p class="muted">Скоро здесь появятся реальные площадки вашего города.</p>';
+}
+
+function showToast(msg){toast.textContent=msg;toast.style.display='block';clearTimeout(window.__t);window.__t=setTimeout(()=>toast.style.display='none',2200);}
+
+function renderHistory(){
+  const arr=JSON.parse(localStorage.getItem(LS_BOOKINGS)||'[]');
+  historyList.innerHTML=arr.length
+    ? arr.map(b=>`<div class="venue"><strong>${b.venue}</strong><div class="muted">Заявка ${b.id||'—'} · Статус: ${b.status==='new'?'Новая':b.status}</div><div class="muted">${b.date} · ${b.time} · ${b.duration} ч · ${b.guests} гостей</div><div class="muted">Телефон: ${b.phone||'—'}${b.altPhone?` (другой: ${b.altPhone})`:''}</div><div class="muted">Комментарий: ${b.comment||'—'}</div></div>`).join('')
+    : '<p class="muted">Пока нет бронирований.</p>';
+}
+
+function renderFavorites(){
+  const list=getNormalizedRooms().filter(r=>favorites.has(r.id)).filter(r=>textMatch(r,getQuery()));
+  favoritesList.innerHTML=list.length?list.map(r=>venueCard(r,'')).join(''):'<p class="muted">Пока нет избранных площадок.</p>';
+}
+function toggleFav(id){ if(favorites.has(id)) favorites.delete(id); else favorites.add(id); localStorage.setItem(LS_FAV, JSON.stringify([...favorites])); renderRecommended(); renderFavorites(); if(resultsView && !resultsView.classList.contains('hidden')) searchBtn.onclick(); }
+
+function openVenue(id){
+  const r=getNormalizedRooms().find(x=>x.id===id); if(!r) return;
+  modalTitle.textContent=`${r.venue} — ${r.room}`;
+  modalImg.src=r.img;
+  modalMeta.textContent=`До ${r.cap} гостей · ${r.price} ₽/час · Рейтинг ${r.rating}`;
+  modalDesc.textContent=r.desc||'Описание скоро появится';
+  modalHours.textContent=r.hours||'—';
+  modalAddress.textContent=r.address||'—';
+  const eqTags=r.eq.map(t=>`<span class='chip'>${labelTag(t)}</span>`);
+  const foodTags=r.food.map(f=>`<span class='chip'>${foodLabel(f)}</span>`);
+  const paymentTags=(r.payments||[]).map(p=>`<span class='chip'>${labelTag(p)}</span>`);
+  modalTags.innerHTML=[...foodTags,...paymentTags,...eqTags].join('');
+  const items=(r.review_items||[]).map(t=>`• ${t}`).join('\n');
+  modalReviews.textContent=(r.reviews||'Пока нет отзывов') + (items?`\n${items}`:'');
+  lastFocusedElement=document.activeElement;
+  venueModal.style.display='flex';
+  venueModal.setAttribute('aria-hidden','false');
+  closeModal.focus();
+}
+
+function syncEventAndAge(){const isKids=eventType.value==='kids_birthday';if(isKids){ageMode.value='with_minors';ageMode.disabled=true}else ageMode.disabled=false;updateAgeRestrictions();}
+function updateAgeRestrictions(){const minors=ageMode.value==='with_minors';hookahEl.disabled=minors;hookahEl.checked=minors?false:hookahEl.checked;hookahChip.classList.toggle('disabled',minors);ageHint.textContent=minors?'Для гостей до 18 лет 18+ услуги отключены.':'Доступны площадки и услуги 18+ согласно правилам.';}
+
+entryTimeBtn.onclick=()=>show('search');
+entryCatalogBtn.onclick=()=>{renderRecommended();show('catalog')};
+changeMindFromSearchBtn.onclick=()=>show('entry');
+changeMindFromCatalogBtn.onclick=()=>show('entry');
+eventType.addEventListener('change',()=>{syncEventAndAge();saveSearchState();});ageMode.addEventListener('change',()=>{updateAgeRestrictions();saveSearchState();});catalogSort.addEventListener('change',renderRecommended);resultsSort.addEventListener('change',()=>{ if(!resultsView.classList.contains('hidden')) searchBtn.onclick(); });resetFilters.addEventListener('click',resetSearchFilters);[searchDateEl,t,guestsEl,searchHoursEl,foodEl,paymentEl,globalSearch,psEl,xboxEl,projEl,karaokeEl,hookahEl,boardgames,animator].forEach(el=>el.addEventListener('change',saveSearchState));
+
+
+function resetSearchFilters(){
+  eventType.value='kids_birthday';
+  ageMode.value='with_minors';
+  foodEl.value='any';
+  paymentEl.value='any';
+  guestsEl.value=6;
+  searchHoursEl.value=2;
+  ['ps','xbox','proj','karaoke','hookah','boardgames','animator'].forEach(id=>document.getElementById(id).checked=false);
+  globalSearch.value='';
+  syncEventAndAge();
+  renderRecommended();
+  renderFavorites();
+  results.innerHTML='';
+  localStorage.removeItem(LS_SEARCH);
+}
+
+searchBtn.onclick=()=>{
+const selectedDate=searchDateEl.value;
+if(isPastDate(selectedDate)){
+  showToast('Нельзя искать площадки на прошедшую дату');
+  resultsView.classList.remove('hidden');
+  results.innerHTML='<p class="muted">Выберите сегодняшнюю или будущую дату для поиска.</p>';
+  return;
+}
+const hours=normalizeHours(searchHoursEl.value);
+searchHoursEl.value=hours;
+const time=t.value,g=+guestsEl.value||1,food=foodEl.value,payment=paymentEl.value,eq=selectedEq(),event=eventType.value,age=ageMode.value;const base=getNormalizedRooms().filter(r=>pass(r,g,food,payment,eq,event,age)).filter(r=>textMatch(r,getQuery()));const exact=base.filter(r=>isAvailableForDuration(r,time,hours));
+if(exact.length){results.innerHTML=sortRooms(exact, resultsSort.value).map(r=>venueCard(r,time)).join('');return}
+for(const alt of near(time)){const found=base.filter(r=>isAvailableForDuration(r,alt,hours));if(found.length){results.innerHTML=`<div class='banner'>На ${time} нет свободных на ${hours} ч. Ближайшее: <strong>${alt}</strong></div>`+sortRooms(found, resultsSort.value).map(r=>venueCard(r,alt)).join('');return}}
+results.innerHTML='<p class="muted">Свободных вариантов не найдено по выбранным фильтрам.</p>'}
+
+
+function openDrawerMenu(){sideDrawer.classList.add('open');drawerBackdrop.classList.add('show');}
+function closeDrawerMenu(){sideDrawer.classList.remove('open');drawerBackdrop.classList.remove('show');}
+
+const systemPrefersLight=window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches;
+const savedTheme=localStorage.getItem(LS_THEME)|| (systemPrefersLight ? 'light' : 'dark');
+if(savedTheme==='light') document.body.classList.add('light');
+const currentMode=document.body.classList.contains('light')?'light':'dark';
+themeToggle.setAttribute('aria-label', currentMode==='light' ? 'Переключить на тёмную тему' : 'Переключить на светлую тему');
+themeToggle.setAttribute('title', currentMode==='light' ? 'Переключить на тёмную тему' : 'Переключить на светлую тему');
+themeToggle.onclick=()=>{
+  document.body.classList.toggle('light');
+  const mode=document.body.classList.contains('light')?'light':'dark';
+  localStorage.setItem(LS_THEME,mode);
+  themeToggle.setAttribute('aria-label', mode==='light' ? 'Переключить на тёмную тему' : 'Переключить на светлую тему');
+  themeToggle.setAttribute('title', mode==='light' ? 'Переключить на тёмную тему' : 'Переключить на светлую тему');
+};
+
+if(window.matchMedia){
+  const media=window.matchMedia('(prefers-color-scheme: light)');
+  media.addEventListener('change',e=>{
+    if(localStorage.getItem(LS_THEME)) return;
+    document.body.classList.toggle('light', e.matches);
+  });
+}
+navHomeBtn.onclick=()=>show('entry');
+navSearchBtn.onclick=()=>show('search');
+navCatalogBtn.onclick=()=>{renderRecommended();show('catalog');};
+navFavBtn.onclick=()=>{renderFavorites();show('favorites');};
+navBookingBtn.onclick=()=>show('booking');
+navPartnerBtn.onclick=()=>show('partner');
+navHistoryBtn.onclick=()=>{renderHistory();show('history');};
+
+openDrawer.onclick=openDrawerMenu;
+closeDrawer.onclick=closeDrawerMenu;
+drawerBackdrop.onclick=closeDrawerMenu;
+dNavHome.onclick=()=>{show('entry');closeDrawerMenu();};
+dNavSearch.onclick=()=>{show('search');closeDrawerMenu();};
+dNavCatalog.onclick=()=>{renderRecommended();show('catalog');closeDrawerMenu();};
+dNavFav.onclick=()=>{renderFavorites();show('favorites');closeDrawerMenu();};
+dNavBooking.onclick=()=>{show('booking');closeDrawerMenu();};
+dNavPartner.onclick=()=>{show('partner');closeDrawerMenu();};
+dNavHistory.onclick=()=>{renderHistory();show('history');closeDrawerMenu();};
+globalSearch.addEventListener('input',()=>{saveSearchState();renderRecommended();renderFavorites(); if(!resultsView.classList.contains('hidden')) searchBtn.onclick();});
+[bookingHours,bookingGuests].forEach(el=>el.addEventListener('input',updateBookingSummary));
+loadSearchState();
+renderRecommended();renderFavorites();renderHistory();syncEventAndAge();show(localStorage.getItem(LS_LAST_VIEW)||'entry');
+
+function getModalFocusable(){
+  return [...venueModal.querySelectorAll('button,[href],input,select,textarea,[tabindex]:not([tabindex="-1"])')]
+    .filter(el=>!el.hasAttribute('disabled') && el.offsetParent!==null);
+}
+function trapModalFocus(e){
+  if(e.key!=='Tab' || venueModal.style.display!=='flex') return;
+  const focusable=getModalFocusable();
+  if(!focusable.length) return;
+  const first=focusable[0];
+  const last=focusable[focusable.length-1];
+  if(e.shiftKey && document.activeElement===first){
+    e.preventDefault();
+    last.focus();
+  } else if(!e.shiftKey && document.activeElement===last){
+    e.preventDefault();
+    first.focus();
+  }
+}
+function closeVenueModal(){
+  venueModal.style.display='none';
+  venueModal.setAttribute('aria-hidden','true');
+  if(lastFocusedElement && typeof lastFocusedElement.focus==='function') lastFocusedElement.focus();
+}
+closeModal.onclick=closeVenueModal;
+venueModal.addEventListener('click',e=>{if(e.target===venueModal) closeVenueModal();});
+document.addEventListener('keydown',e=>{
+  if(e.key==='Escape' && venueModal.style.display==='flex') closeVenueModal();
+  trapModalFocus(e);
+});
+let selectedVenueId=null;
+let lastFocusedElement=null;
+bookFromModal.onclick=()=>{
+  selectedVenueId = getNormalizedRooms().find(v=>`${v.venue} — ${v.room}`===modalTitle.textContent)?.id || null;
+  const v=getNormalizedRooms().find(x=>x.id===selectedVenueId);
+  bookingVenue.textContent = v ? `Заведение: ${v.venue} — ${v.room}` : 'Заведение не выбрано';
+  bookingStatus.textContent='';
+  bookingDate.value=searchDateEl.value||bookingDate.value;
+  bookingTime.value=t.value||bookingTime.value;
+  bookingGuests.value=guestsEl.value||bookingGuests.value;
+  bookingHours.value=searchHoursEl.value||bookingHours.value;
+  updateBookingSummary();
+  checkBooking.disabled=false;
+  closeVenueModal();
+  show('booking');
+  bookingView.scrollIntoView({behavior:'smooth'});
+};
+sendPartnerLead.onclick=()=>{
+  const city=pCity.value.trim(), name=pName.value.trim(), contact=pContact.value.trim(), phone=pPhone.value.trim();
+  if(!city||!name||!contact||!phone){showToast('Заполните все поля заявки');return;}
+  const subject=encodeURIComponent('Заявка на подключение площадки');
+  const body=encodeURIComponent(`Город: ${city}\nПлощадка: ${name}\nКонтакт: ${contact}\nСвязь: ${phone}`);
+  partnerStatus.textContent='Заявка подготовлена. Откроется почтовый клиент для отправки.';
+  window.location.href=`mailto:partners@rooms.example?subject=${subject}&body=${body}`;
+};
+
+checkBooking.onclick=()=>{
+  const v=getNormalizedRooms().find(x=>x.id===selectedVenueId);
+  if(!v){bookingStatus.textContent='Сначала выберите заведение.';showToast('Сначала выберите площадку');return;}
+  const selectedDate=bookingDate.value;
+  if(isPastDate(selectedDate)){
+    bookingStatus.textContent='Нельзя оформить бронь на прошедшую дату.';
+    showToast('Выберите актуальную дату бронирования');
+    return;
+  }
+  const time=bookingTime.value;
+  const hours=normalizeHours(bookingHours.value);
+  bookingHours.value=hours;
+  const guests=+bookingGuests.value||1;
+  const phoneRaw=bookingPhone.value.trim();
+  const altPhoneRaw=bookingAltPhone.value.trim();
+  if(!phoneRaw){bookingStatus.textContent='Укажите телефон для связи.';showToast('Нужен телефон для брони');return;}
+  if(!bookingConsent.checked){bookingStatus.textContent='Нужно согласие на обработку данных.';showToast('Подтвердите согласие');return;}
+  const phone=formatPhone(phoneRaw);
+  if(!phone.ok){bookingStatus.textContent='Проверьте формат телефона.';showToast('Некорректный телефон');return;}
+  bookingPhone.value=phone.value;
+  let altPhone='';
+  if(altPhoneRaw){
+    const alt=formatPhone(altPhoneRaw);
+    if(!alt.ok){bookingStatus.textContent='Проверьте телефон другого получателя.';showToast('Некорректный доп. телефон');return;}
+    altPhone=alt.value;
+    bookingAltPhone.value=altPhone;
+  }
+  if(guests>v.cap){bookingStatus.textContent=`Для ${guests} гостей эта площадка не подходит (макс. ${v.cap}).`;showToast('Слишком много гостей для выбранной площадки');return;}
+  if(!isAvailableForDuration(v,time,hours)){
+    const next=near(time).find(t=>!v.busy.includes(t));
+    bookingStatus.textContent=next?`На ${time} занято. Ближайшее время: ${next}.`:`На выбранное время нет свободных слотов.`;
+    showToast('Выбранное время занято');
+    return;
+  }
+  const history=JSON.parse(localStorage.getItem(LS_BOOKINGS)||'[]');
+  const bookingId='R-'+Date.now().toString().slice(-6);
+  bookingStatus.textContent=`Слот свободен. Заявка ${bookingId} создана (статус: новая).`;
+  history.unshift({id:bookingId,status:'new',createdAt:new Date().toISOString(),venue:v.venue+' — '+v.room,date:bookingDate.value,time:bookingTime.value,duration:hours,guests,phone:phone.value,altPhone,comment:bookingComment.value.trim()});
+  localStorage.setItem(LS_BOOKINGS, JSON.stringify(history.slice(0,20)));
+  renderHistory();
+  showToast('Бронь создана');
+};
+</script>
+</body>
+</html>

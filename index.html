@@ -44,10 +44,7 @@
     a { color: inherit; text-decoration: none; }
     img { display: block; max-width: 100%; }
 
-    .wide {
-      width: min(1480px, calc(100% - 40px));
-      margin: 0 auto;
-    }
+    .wide { width: min(1480px, calc(100% - 40px)); margin: 0 auto; }
 
     .top {
       position: sticky;
@@ -65,12 +62,7 @@
       align-items: center;
       gap: 18px;
     }
-    .brand {
-      display: flex;
-      align-items: center;
-      gap: 11px;
-      min-width: 178px;
-    }
+    .brand { display: flex; align-items: center; gap: 11px; min-width: 178px; }
     .mark {
       width: 40px;
       height: 40px;
@@ -82,13 +74,13 @@
       font-weight: 800;
     }
     .brand strong { display: block; font-size: 21px; line-height: 1; }
-    .brand span span { display: block; margin-top: 4px; font-size: 11px; color: var(--muted); }
+    .brand span span { display: block; margin-top: 4px; color: var(--muted); font-size: 11px; }
     .nav { display: flex; gap: 4px; }
     .nav a,
     .top-btn {
       min-height: 40px;
-      border-radius: 999px;
       border: 1px solid var(--line);
+      border-radius: 999px;
       background: rgba(255, 255, 255, .7);
       color: var(--ink);
       padding: 0 14px;
@@ -149,36 +141,24 @@
       align-items: center;
       width: fit-content;
       min-height: 34px;
-      padding: 0 13px;
       border: 1px solid #cbdad2;
       border-radius: 999px;
       background: rgba(255, 255, 255, .65);
       color: var(--green-dark);
+      padding: 0 13px;
       font-size: 12px;
       font-weight: 800;
     }
-    .hero h1 {
-      margin: 20px 0 0;
-      max-width: 900px;
-      font-size: clamp(42px, 5.4vw, 86px);
-      line-height: .94;
-      letter-spacing: 0;
-    }
-    .hero p {
-      margin: 24px 0 0;
-      max-width: 690px;
-      color: var(--muted);
-      font-size: 18px;
-      line-height: 1.7;
-    }
+    .hero h1 { max-width: 900px; margin: 20px 0 0; font-size: clamp(42px, 5.4vw, 86px); line-height: .94; letter-spacing: 0; }
+    .hero p { max-width: 690px; margin: 24px 0 0; color: var(--muted); font-size: 18px; line-height: 1.7; }
     .hero-stats { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 30px; }
     .stat {
       min-width: 154px;
-      padding: 15px 16px;
       border: 1px solid rgba(219, 229, 223, .9);
       border-radius: var(--radius);
       background: rgba(255, 254, 251, .72);
       box-shadow: 0 1px 0 rgba(255, 255, 255, .8);
+      padding: 15px 16px;
     }
     .stat strong { display: block; font-size: 23px; }
     .stat span { display: block; margin-top: 4px; color: var(--muted); font-size: 12px; line-height: 1.35; }
@@ -188,7 +168,8 @@
     .summary,
     .filter-panel,
     .how-card,
-    .history-item {
+    .history-item,
+    .idea-card {
       border: 1px solid var(--line);
       border-radius: var(--radius);
       background: rgba(255, 254, 251, .92);
@@ -226,8 +207,8 @@
       border: 1px solid var(--line);
       border-radius: 999px;
       background: #fff;
-      padding: 0 12px;
       color: var(--ink);
+      padding: 0 12px;
       font-size: 13px;
       font-weight: 800;
     }
@@ -255,26 +236,13 @@
     .btn.small { min-height: 38px; padding: 0 12px; font-size: 13px; }
 
     .section { padding: 54px 0; }
-    .section-head {
-      display: flex;
-      align-items: end;
-      justify-content: space-between;
-      gap: 24px;
-      margin-bottom: 22px;
-    }
+    .section-head { display: flex; align-items: end; justify-content: space-between; gap: 24px; margin-bottom: 22px; }
     .section-head h2 { margin: 0; font-size: clamp(28px, 3vw, 42px); line-height: 1.12; }
     .section-head p { max-width: 720px; margin: 9px 0 0; color: var(--muted); line-height: 1.65; }
     .muted { color: var(--muted); }
 
     .scene-grid { display: grid; grid-template-columns: 1.35fr .9fr .9fr; gap: 14px; }
-    .scene {
-      position: relative;
-      min-height: 230px;
-      overflow: hidden;
-      border-radius: var(--radius);
-      background: #dbe4df;
-      color: #fff;
-    }
+    .scene { position: relative; min-height: 230px; overflow: hidden; border-radius: var(--radius); background: #dbe4df; color: #fff; }
     .scene.big { min-height: 330px; }
     .scene img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
     .scene:after { content: ''; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(0,0,0,.04), rgba(0,0,0,.62)); }
@@ -321,20 +289,11 @@
       font-size: 12px;
       font-weight: 800;
     }
-    .fav {
-      position: absolute;
-      right: 10px;
-      top: 10px;
-      width: 34px;
-      height: 34px;
-      border: 1px solid rgba(255,255,255,.72);
-      border-radius: 50%;
-      background: rgba(255,255,255,.94);
-      color: var(--ink);
-      font-size: 18px;
-    }
+    .fav { position: absolute; right: 10px; top: 10px; width: 34px; height: 34px; border: 1px solid rgba(255,255,255,.72); border-radius: 50%; background: rgba(255,255,255,.94); color: var(--ink); font-size: 18px; }
     .fav.active { color: var(--danger); }
     .card-body { display: grid; gap: 12px; padding: 15px; }
+    .venue-line { display: flex; align-items: center; justify-content: space-between; gap: 10px; color: var(--muted); font-size: 12px; font-weight: 800; }
+    .venue-more { display: inline-flex; align-items: center; min-height: 26px; border-radius: 999px; background: var(--mint); color: var(--green-dark); padding: 0 9px; white-space: nowrap; }
     .card-title { display: flex; align-items: start; justify-content: space-between; gap: 10px; }
     .card-title h3 { margin: 0; font-size: 19px; line-height: 1.24; }
     .rating { color: var(--ok); font-size: 13px; font-weight: 800; white-space: nowrap; }
@@ -363,29 +322,38 @@
     .history { display: grid; gap: 10px; }
     .history-item { display: grid; gap: 6px; padding: 14px; }
 
-    .partner {
-      display: grid;
-      grid-template-columns: .9fr 1.1fr;
-      gap: 20px;
-      align-items: start;
-      overflow: hidden;
-      border-radius: var(--radius);
-      background: linear-gradient(135deg, #1d352e, #41685b);
-      color: #fff;
-      padding: 24px;
-    }
+    .venue-strip { display: grid; grid-template-columns: 140px minmax(0, 1fr); gap: 14px; border: 1px solid var(--line); border-radius: var(--radius); background: #fff; padding: 12px; }
+    .venue-strip img { width: 100%; height: 100%; min-height: 110px; object-fit: cover; border-radius: var(--radius); }
+    .room-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    .room-option { display: grid; gap: 4px; text-align: left; border: 1px solid var(--line); border-radius: var(--radius); background: #fff; padding: 12px; }
+    .room-option.active { border-color: var(--green); background: var(--mint); }
+    .room-option strong { line-height: 1.25; }
+    .room-option span { color: var(--muted); font-size: 12px; }
+
+    .partner { display: grid; grid-template-columns: .86fr 1.14fr; gap: 20px; align-items: start; overflow: hidden; border-radius: var(--radius); background: linear-gradient(135deg, #1d352e, #41685b); color: #fff; padding: 24px; }
     .partner p { color: rgba(255,255,255,.78); line-height: 1.65; }
     .partner .kicker { border-color: rgba(255,255,255,.24); background: rgba(255,255,255,.12); color: #fff; }
     .partner .panel { color: var(--ink); background: rgba(255,254,251,.96); }
+    .partner-flow { display: grid; gap: 10px; margin-top: 18px; }
+    .flow-item { display: flex; gap: 10px; align-items: flex-start; color: rgba(255,255,255,.82); font-size: 14px; line-height: 1.5; }
+    .flow-item span { min-width: 28px; height: 28px; display: grid; place-items: center; border-radius: 50%; background: rgba(255,255,255,.14); color: #fff; font-weight: 800; }
+    .room-builder { display: grid; gap: 12px; margin-top: 14px; }
+    .room-entry { border: 1px solid var(--line); border-radius: var(--radius); background: #fff; padding: 14px; }
+    .room-entry-head { display: flex; justify-content: space-between; gap: 12px; align-items: center; margin-bottom: 12px; }
+    .room-entry-head strong { font-size: 15px; }
+    .ideas { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+    .idea-card { padding: 18px; }
+    .idea-card strong { display: block; font-size: 17px; }
+    .idea-card p { margin: 8px 0 0; color: var(--muted); line-height: 1.6; font-size: 14px; }
     .footer { display: flex; justify-content: space-between; gap: 20px; padding: 36px 0 42px; border-top: 1px solid var(--line); color: var(--muted); font-size: 13px; }
 
     .modal-bg { position: fixed; inset: 0; z-index: 90; display: none; align-items: center; justify-content: center; background: rgba(11,18,16,.55); padding: 18px; }
     .modal-bg.open { display: flex; }
-    .modal { width: min(920px, 100%); max-height: min(880px, calc(100vh - 36px)); overflow: auto; border: 1px solid var(--line); border-radius: var(--radius); background: var(--paper); box-shadow: var(--shadow); }
+    .modal { width: min(980px, 100%); max-height: min(880px, calc(100vh - 36px)); overflow: auto; border: 1px solid var(--line); border-radius: var(--radius); background: var(--paper); box-shadow: var(--shadow); }
     .modal-head { display: flex; justify-content: flex-end; padding: 14px 14px 0; }
     .close { width: 40px; height: 40px; border: 1px solid var(--line); border-radius: 50%; background: #fff; font-weight: 800; }
     .modal-content { display: grid; gap: 16px; padding: 14px 18px 18px; }
-    .modal-grid { display: grid; grid-template-columns: 1fr 260px; gap: 14px; }
+    .modal-grid { display: grid; grid-template-columns: 1fr 280px; gap: 14px; }
     .modal-grid .photo { border-radius: var(--radius); aspect-ratio: 16 / 9; }
     .facts { display: grid; gap: 10px; }
     .fact { border: 1px solid var(--line); border-radius: var(--radius); padding: 12px; }
@@ -398,9 +366,9 @@
       .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .hero-content { grid-template-columns: 1fr; }
       .search { max-width: 760px; }
+      .ideas { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     }
     @media (max-width: 900px) {
-      .top { position: sticky; }
       .nav { display: none; }
       .hero { min-height: auto; }
       .hero-content { padding: 48px 0; }
@@ -408,13 +376,15 @@
       .booking,
       .partner,
       .scene-grid,
-      .how { grid-template-columns: 1fr; }
+      .how,
+      .modal-grid { grid-template-columns: 1fr; }
       .filter-panel { position: static; }
       .scene.big,
       .scene { min-height: 230px; }
-      .modal-grid { grid-template-columns: 1fr; }
       .section-head { align-items: start; flex-direction: column; }
       .toolbar { width: 100%; }
+      .venue-strip { grid-template-columns: 1fr; }
+      .venue-strip img { height: 180px; }
     }
     @media (max-width: 640px) {
       .wide,
@@ -428,9 +398,11 @@
       .top-btn { padding: 0 12px; }
       .hero h1 { font-size: 39px; }
       .hero p { font-size: 15px; }
-      .form { grid-template-columns: 1fr; }
+      .form,
+      .cards,
+      .room-options,
+      .ideas { grid-template-columns: 1fr; }
       .search { padding: 14px; }
-      .cards { grid-template-columns: 1fr; }
       .toolbar { align-items: stretch; flex-direction: column; }
       .toolbar select,
       .toolbar .btn { width: 100%; }
@@ -452,6 +424,7 @@
         <a href='#how'>Как работает</a>
         <a href='#booking'>Бронь</a>
         <a href='#partner'>Партнёрам</a>
+        <a href='#ideas'>Идеи</a>
       </nav>
       <div class='top-actions'>
         <button class='top-btn city' id='cityButton' type='button'>Воронеж</button>
@@ -467,17 +440,17 @@
         <div>
           <span class='kicker'>Rooms · старт в Воронеже</span>
           <h1>Найдите комнату под событие за пару минут.</h1>
-          <p>Лаундж, детская комната, караоке, банкетный зал или переговорная. Выбираете дату и формат, Rooms показывает свободные помещения и близкие окна.</p>
+          <p>Лаундж, детская комната, караоке, банкетный зал или переговорная. Выбираете дату и формат, Rooms показывает свободные комнаты и другие подходящие помещения внутри тех же заведений.</p>
           <div class='hero-stats'>
             <div class='stat'><strong>30%</strong><span>предоплата после подтверждения</span></div>
-            <div class='stat'><strong>15 мин</strong><span>ориентир ответа партнёра</span></div>
+            <div class='stat'><strong>1 заведение</strong><span>может иметь несколько комнат</span></div>
             <div class='stat'><strong>18+</strong><span>услуги скрываются для детских событий</span></div>
           </div>
         </div>
 
         <form class='search' id='searchForm'>
-          <h2>Подобрать помещение</h2>
-          <p>Начните с даты, времени и гостей. Остальное можно уточнить позже.</p>
+          <h2>Подобрать комнату</h2>
+          <p>Ищем конкретную комнату, но показываем заведение и соседние варианты внутри него.</p>
           <div class='form'>
             <div class='field'>
               <label>Тип</label>
@@ -491,21 +464,12 @@
                 <option value='hookah'>Кальянная VIP</option>
               </select>
             </div>
-            <div class='field'>
-              <label>Город</label>
-              <select><option>Воронеж</option></select>
-            </div>
+            <div class='field'><label>Город</label><select><option>Воронеж</option></select></div>
             <div class='field'><label>Дата</label><input id='date' type='date'></div>
             <div class='field'><label>Время</label><select id='time'></select></div>
-            <div class='field'>
-              <label>Длительность</label>
-              <select id='hours'><option value='2'>2 часа</option><option value='3'>3 часа</option><option value='4'>4 часа</option><option value='5'>5 часов</option><option value='6'>6 часов</option></select>
-            </div>
-            <div class='field'><label>Гостей</label><input id='guests' type='number' min='1' max='80' value='8'></div>
-            <div class='field full'>
-              <label>Состав гостей</label>
-              <select id='ageMode'><option value='mixed'>Есть гости до 18 лет</option><option value='adults'>Только 18+</option></select>
-            </div>
+            <div class='field'><label>Длительность</label><select id='hours'><option value='2'>2 часа</option><option value='3'>3 часа</option><option value='4'>4 часа</option><option value='5'>5 часов</option><option value='6'>6 часов</option></select></div>
+            <div class='field'><label>Гостей</label><input id='guests' type='number' min='1' max='90' value='8'></div>
+            <div class='field full'><label>Состав гостей</label><select id='ageMode'><option value='mixed'>Есть гости до 18 лет</option><option value='adults'>Только 18+</option></select></div>
           </div>
           <div class='chips' id='filterChips'>
             <label class='chip'><input type='checkbox' value='kidsZone'> Детская зона</label>
@@ -517,7 +481,7 @@
             <label class='chip'><input type='checkbox' value='parking'> Парковка</label>
           </div>
           <div class='actions'>
-            <button class='btn primary' type='submit'>Показать варианты</button>
+            <button class='btn primary' type='submit'>Показать комнаты</button>
             <button class='btn clear' type='button' id='showAllButton'>Весь каталог</button>
           </div>
         </form>
@@ -525,12 +489,7 @@
     </section>
 
     <section class='section wide'>
-      <div class='section-head'>
-        <div>
-          <h2>Сценарии, под которые ищут Rooms</h2>
-          <p>Мы продаём не столик, а подходящее приватное пространство: для праздника, встречи, вечера или работы.</p>
-        </div>
-      </div>
+      <div class='section-head'><div><h2>Сценарии, под которые ищут Rooms</h2><p>Мы продаём не столик, а подходящее приватное пространство: для праздника, встречи, вечера или работы.</p></div></div>
       <div class='scene-grid'>
         <article class='scene big'><img src='https://images.unsplash.com/photo-1564429238817-393bd4286b2d?auto=format&fit=crop&w=1200&q=86' alt='Детская комната'><div><strong>Детские праздники</strong><span>Комната, аниматоры, торт, безопасные правила.</span></div></article>
         <article class='scene'><img src='https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?auto=format&fit=crop&w=1200&q=86' alt='Кинозал'><div><strong>Кино и караоке</strong><span>Закрытая комната для компании.</span></div></article>
@@ -540,27 +499,21 @@
 
     <section class='section wide' id='catalog'>
       <div class='section-head'>
-        <div>
-          <h2>Помещения в Воронеже</h2>
-          <p id='resultIntro'>Широкая витрина с фильтрами, свободными окнами и логикой будущей CRM Rooms.</p>
-        </div>
-        <div class='toolbar'>
-          <select id='sortMode'><option value='recommended'>Рекомендуемые</option><option value='rating'>По рейтингу</option><option value='priceAsc'>Цена ниже</option><option value='capacity'>Вместимость больше</option></select>
-          <button class='btn small soft' type='button' id='resetButton'>Сбросить</button>
-        </div>
+        <div><h2>Комнаты и помещения в Воронеже</h2><p id='resultIntro'>Выдача строится по комнатам. Если в одном заведении есть несколько подходящих комнат, Rooms показывает это прямо в карточке.</p></div>
+        <div class='toolbar'><select id='sortMode'><option value='recommended'>Рекомендуемые</option><option value='rating'>По рейтингу</option><option value='priceAsc'>Цена ниже</option><option value='capacity'>Вместимость больше</option></select><button class='btn small soft' type='button' id='resetButton'>Сбросить</button></div>
       </div>
       <div class='catalog-shell'>
         <aside class='filter-panel'>
           <h3>Быстрый тип</h3>
           <div class='filter-list' id='typeButtons'>
-            <button class='btn small filter-pill active' data-type='any' type='button'>Все помещения</button>
-            <button class='btn small filter-pill' data-type='kids' type='button'>Детские комнаты</button>
+            <button class='btn small filter-pill active' data-type='any' type='button'>Все комнаты</button>
+            <button class='btn small filter-pill' data-type='kids' type='button'>Детские</button>
             <button class='btn small filter-pill' data-type='karaoke' type='button'>Караоке</button>
             <button class='btn small filter-pill' data-type='lounge' type='button'>Лаунджи</button>
             <button class='btn small filter-pill' data-type='banquet' type='button'>Банкеты</button>
             <button class='btn small filter-pill' data-type='meeting' type='button'>Переговорные</button>
           </div>
-          <div class='note'>Цены и фото пока демо. Когда будут реальные площадки Воронежа, заменим карточки на проверенные данные.</div>
+          <div class='note'>В MVP бронь создаётся на конкретную комнату. Заведение нужно для адреса, правил, общего рейтинга и кабинета партнёра.</div>
         </aside>
         <div>
           <div class='cards' id='results'></div>
@@ -570,30 +523,20 @@
     </section>
 
     <section class='section wide' id='how'>
-      <div class='section-head'>
-        <div>
-          <h2>Контакты открываются только после предоплаты</h2>
-          <p>Так Rooms защищает комиссию и снижает риск, что бронь уйдёт напрямую после подтверждения.</p>
-        </div>
-      </div>
+      <div class='section-head'><div><h2>Как работает связка заведение → комнаты</h2><p>Пользователь выбирает конкретную комнату, а бизнес управляет заведением и всеми комнатами внутри него.</p></div></div>
       <div class='how'>
-        <div class='how-card'><span class='num'>1</span><h3>Клиент выбирает слот</h3><p>Дата, время, гости, тип помещения и важные фильтры.</p></div>
-        <div class='how-card'><span class='num'>2</span><h3>Партнёр подтверждает</h3><p>Площадка видит заявку без полного телефона клиента.</p></div>
-        <div class='how-card'><span class='num'>3</span><h3>Клиент вносит 30%</h3><p>После оплаты бронь фиксируется, а контакт открывается площадке.</p></div>
+        <div class='how-card'><span class='num'>1</span><h3>Клиент ищет комнату</h3><p>Фильтры применяются к каждой комнате: тип, вместимость, время, 18+, услуги.</p></div>
+        <div class='how-card'><span class='num'>2</span><h3>Rooms показывает заведение</h3><p>В карточке видно, где находится комната и есть ли ещё подходящие комнаты рядом.</p></div>
+        <div class='how-card'><span class='num'>3</span><h3>Бронь фиксируется на комнату</h3><p>Партнёр подтверждает конкретный слот, после чего клиент вносит предоплату.</p></div>
       </div>
     </section>
 
     <section class='section wide' id='booking'>
-      <div class='section-head'>
-        <div>
-          <h2>Оставить заявку на бронь</h2>
-          <p>Выберите помещение в каталоге: дата, время и длительность подтянутся автоматически.</p>
-        </div>
-      </div>
+      <div class='section-head'><div><h2>Оставить заявку на бронь</h2><p>Выберите комнату в каталоге: заведение, дата, время и длительность подтянутся автоматически.</p></div></div>
       <div class='booking'>
         <form class='panel' id='bookingForm'>
           <div class='form'>
-            <div class='field full'><label>Помещение</label><select id='bookingSpace'></select></div>
+            <div class='field full'><label>Комната</label><select id='bookingSpace'></select></div>
             <div class='field'><label>Дата</label><input id='bookingDate' type='date' required></div>
             <div class='field'><label>Время</label><select id='bookingTime'></select></div>
             <div class='field'><label>Длительность</label><select id='bookingHours'><option value='2'>2 часа</option><option value='3'>3 часа</option><option value='4'>4 часа</option><option value='5'>5 часов</option><option value='6'>6 часов</option></select></div>
@@ -609,18 +552,13 @@
           <div class='row'><span>Предоплата 30%</span><strong id='sumPrepay'>0 ₽</strong></div>
           <div class='row'><span>Комиссия Rooms</span><strong>внутри предоплаты</strong></div>
           <div class='row'><span>Статус</span><strong>ожидает подтверждения</strong></div>
-          <p class='note'>Это демо-логика. В реальном MVP здесь будет платёж, статус подтверждения и календарь партнёра.</p>
+          <p class='note'>В реальном MVP здесь будет календарь комнаты, статус подтверждения и платёж. Контакт откроется площадке после предоплаты.</p>
         </div>
       </div>
     </section>
 
     <section class='section wide'>
-      <div class='section-head'>
-        <div>
-          <h2>Мои заявки</h2>
-          <p>История хранится локально в браузере, чтобы показать будущий личный кабинет.</p>
-        </div>
-      </div>
+      <div class='section-head'><div><h2>Мои заявки</h2><p>История хранится локально в браузере, чтобы показать будущий личный кабинет.</p></div></div>
       <div class='history' id='historyList'></div>
     </section>
 
@@ -628,28 +566,42 @@
       <div class='partner'>
         <div>
           <span class='kicker'>Партнёрам</span>
-          <h2>Подключите помещение к Rooms</h2>
-          <p>Партнёр получает поток заявок, календарь занятости и понятный процесс подтверждения. На MVP карточки лучше пропускать через модерацию Rooms.</p>
+          <h2>Добавьте заведение и комнаты внутри него</h2>
+          <p>Теперь партнёр описывает не одно абстрактное помещение, а структуру бизнеса: общее заведение, адрес и правила, затем каждую комнату с отдельной ценой, фото, вместимостью и услугами.</p>
+          <div class='partner-flow'>
+            <div class='flow-item'><span>1</span><div>Заполняем заведение: название, город, адрес, контакт, общие правила.</div></div>
+            <div class='flow-item'><span>2</span><div>Добавляем комнаты: тип, вместимость, цена, фото, услуги и ограничения.</div></div>
+            <div class='flow-item'><span>3</span><div>Rooms модерирует данные и подключает календарь свободных слотов.</div></div>
+          </div>
         </div>
         <form class='panel' id='partnerForm'>
           <div class='form'>
             <div class='field'><label>Город</label><input id='partnerCity' value='Воронеж' required></div>
-            <div class='field'><label>Тип</label><select id='partnerType'><option>Лаундж</option><option>Детская комната</option><option>Караоке-комната</option><option>Банкетный зал</option><option>Переговорная</option><option>Кальянная VIP</option></select></div>
-            <div class='field'><label>Название</label><input id='partnerName' placeholder='Rooms Cinema' required></div>
-            <div class='field'><label>Вместимость</label><input id='partnerCap' type='number' min='1' placeholder='До 20 гостей' required></div>
+            <div class='field'><label>Название заведения</label><input id='partnerVenueName' placeholder='Например: Kids Loft' required></div>
+            <div class='field full'><label>Адрес</label><input id='partnerAddress' placeholder='Улица, дом, ориентир' required></div>
             <div class='field'><label>Контакт</label><input id='partnerContact' placeholder='Имя' required></div>
             <div class='field'><label>Телефон / Telegram</label><input id='partnerPhone' placeholder='+7... или @username' required></div>
-            <div class='field full'><label>Что есть в помещении</label><textarea id='partnerFeatures' placeholder='Фото, кухня, караоке, детская зона, парковка, правила, минимальная бронь'></textarea></div>
+            <div class='field full'><label>Общие правила и услуги заведения</label><textarea id='partnerVenueFeatures' placeholder='Парковка, кухня, можно ли со своей едой, режим работы, ограничения 18+'></textarea></div>
           </div>
-          <div class='actions'><button class='btn primary' type='submit'>Отправить заявку</button><span class='muted' id='partnerStatus'></span></div>
+          <div class='room-builder' id='partnerRooms'></div>
+          <div class='actions'><button class='btn soft' type='button' id='addRoomButton'>+ Добавить комнату</button><button class='btn primary' type='submit'>Отправить заведение</button><span class='muted' id='partnerStatus'></span></div>
         </form>
       </div>
     </section>
 
-    <footer class='footer wide'>
-      <span>Rooms — прототип сервиса бронирования приватных помещений.</span>
-      <span>Воронеж · Россия · GitHub Pages</span>
-    </footer>
+    <section class='section wide' id='ideas'>
+      <div class='section-head'><div><h2>Что стоит добавить дальше</h2><p>Эти функции уже заложены в логику Rooms и хорошо ложатся на модель с заведениями и комнатами.</p></div></div>
+      <div class='ideas'>
+        <div class='idea-card'><strong>Сравнение комнат</strong><p>Клиент отмечает 2-3 варианта и сравнивает цену, вместимость, правила и свободные окна.</p></div>
+        <div class='idea-card'><strong>Похожие окна</strong><p>Если нужная комната занята, Rooms предлагает другую комнату в том же заведении или близкое время.</p></div>
+        <div class='idea-card'><strong>Кабинет партнёра</strong><p>Заведение управляет комнатами, календарём, ценами, заявками и статусами подтверждения.</p></div>
+        <div class='idea-card'><strong>Рейтинг комнаты</strong><p>Оцениваем не только заведение, но и конкретную комнату: чистота, фото, звук, детская безопасность.</p></div>
+        <div class='idea-card'><strong>Модерация правил</strong><p>Если детская комната отмечает кальян или алкоголь, заявка уходит на ручную проверку.</p></div>
+        <div class='idea-card'><strong>SEO-страницы</strong><p>Отдельные страницы: караоке-комнаты, детские праздники, банкетные залы, переговорные в Воронеже.</p></div>
+      </div>
+    </section>
+
+    <footer class='footer wide'><span>Rooms — прототип сервиса бронирования приватных помещений.</span><span>Воронеж · Россия · GitHub Pages</span></footer>
   </main>
 
   <div class='modal-bg' id='spaceModal' aria-hidden='true'><div class='modal' role='dialog' aria-modal='true'><div class='modal-head'><button class='close' type='button' data-close='spaceModal'>×</button></div><div class='modal-content' id='spaceModalContent'></div></div></div>
@@ -657,277 +609,121 @@
   <div class='toast' id='toast'></div>
 
   <script>
+    const venues = [
+      {id:'rooms-cinema', title:'Rooms Cinema', kind:'частный кинозал и караоке', address:'Воронеж, центр', district:'центр', rating:4.9, reviews:186, response:'до 12 мин', image:'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?auto=format&fit=crop&w=1200&q=86', description:'Заведение с несколькими закрытыми комнатами для кино, караоке и небольших праздников. Общая стойка администратора, кухня по меню и единые правила бронирования.', amenities:['Парковка рядом','Кухня по меню','Можно со своим тортом','Администратор на месте']},
+      {id:'kids-loft', title:'Kids Loft', kind:'семейное пространство', address:'Воронеж, северный район', district:'северный', rating:4.8, reviews:132, response:'до 18 мин', image:'https://images.unsplash.com/photo-1564429238817-393bd4286b2d?auto=format&fit=crop&w=1200&q=86', description:'Семейное пространство с несколькими детскими комнатами, аниматорами и зоной для родителей. 18+ услуги недоступны.', amenities:['Аниматоры','Детское меню','Зона родителей','Без алкоголя и кальяна']},
+      {id:'quiet-lounge', title:'Quiet Lounge', kind:'лаундж-пространство', address:'Воронеж, левый берег', district:'левый берег', rating:4.7, reviews:211, response:'до 10 мин', image:'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=1200&q=86', description:'Лаундж с разными комнатами для взрослых компаний: тихая зона, караоке и VIP-комната. Подходит для 18+ форматов.', amenities:['Кухня','Кальянная карта','Караоке','Алкоголь обсуждается']},
+      {id:'event-36', title:'Event Hall 36', kind:'банкетная площадка', address:'Воронеж, Коминтерновский район', district:'коминтерновский', rating:4.6, reviews:74, response:'до 25 мин', image:'https://images.unsplash.com/photo-1519167758481-83f550bb49b3?auto=format&fit=crop&w=1200&q=86', description:'Банкетная площадка с большим залом и отдельной камерной комнатой. Хорошо подходит для семейных событий и небольших корпоративов.', amenities:['Кухня','Звук','Ведущий по запросу','Парковка']},
+      {id:'focus-hub', title:'Focus Hub', kind:'деловые комнаты', address:'Воронеж, деловой центр', district:'центр', rating:4.8, reviews:58, response:'до 9 мин', image:'https://images.unsplash.com/photo-1497366754035-f200968a6e72?auto=format&fit=crop&w=1200&q=86', description:'Небольшой деловой хаб с переговорными и комнатой для мастер-классов. Тихо, светло, есть оборудование для презентаций.', amenities:['Проектор','Флипчарт','Вода','Парковка']}
+    ];
+
     const spaces = [
-      {id:'cinema-room', title:'Rooms Cinema', subtitle:'частный кинозал', type:'karaoke', capacity:14, price:1600, minHours:2, rating:4.9, reviews:126, score:96, response:'до 12 мин', address:'Воронеж, центр', image:'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?auto=format&fit=crop&w=1200&q=86', description:'Закрытая комната для кинопросмотра, дня рождения или спокойной встречи компанией. Есть большой экран, звук, караоке и мягкая зона.', tags:['Караоке','Проектор','Своя еда','Парковка'], amenities:['karaoke','projector','ownFood','parking'], busy:['18:00'], rules:'Минимальная бронь 2 часа. Предоплата после подтверждения.', reviewsText:['Хороший звук и комфортный зал.','Удобно для небольшого праздника.']},
-      {id:'kids-loft', title:'Kids Loft', subtitle:'детская комната', type:'kids', capacity:18, price:1900, minHours:3, rating:4.8, reviews:94, score:94, response:'до 18 мин', address:'Воронеж, северный район', image:'https://images.unsplash.com/photo-1564429238817-393bd4286b2d?auto=format&fit=crop&w=1200&q=86', description:'Светлая детская комната для дней рождения и семейных событий. Можно пригласить аниматора, принести торт и выбрать пакет с кухней.', tags:['Детская зона','Аниматоры','Своя еда','Без 18+'], amenities:['kidsZone','ownFood','parking'], busy:['16:00','17:00'], rules:'18+ услуги недоступны. Минимальная бронь 3 часа.', reviewsText:['Дети были заняты весь вечер.','Чисто, спокойно, удобно для родителей.']},
-      {id:'quiet-lounge', title:'Quiet Lounge', subtitle:'лаундж-комната', type:'lounge', capacity:20, price:2200, minHours:2, rating:4.7, reviews:171, score:91, response:'до 10 мин', address:'Воронеж, левый берег', image:'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=1200&q=86', description:'Лаундж для взрослой компании, встреч и камерных вечеринок. Подходит для 18+ форматов, есть кальянная зона и караоке.', tags:['Кальян','Караоке','Алкоголь','Кухня'], amenities:['hookah','karaoke','alcohol'], busy:['19:00','20:00'], rules:'Только 18+. Документы могут попросить на входе.', reviewsText:['Стильно, спокойно, хороший сервис.','Подходит для вечера компанией.']},
-      {id:'event-hall', title:'Event Hall 36', subtitle:'банкетный зал', type:'banquet', capacity:36, price:2800, minHours:4, rating:4.6, reviews:58, score:86, response:'до 25 мин', address:'Воронеж, Коминтерновский район', image:'https://images.unsplash.com/photo-1519167758481-83f550bb49b3?auto=format&fit=crop&w=1200&q=86', description:'Зал для дней рождения, семейных праздников и небольших корпоративов. Есть кухня, посадка, звук и место под ведущего.', tags:['До 36 гостей','Кухня','Проектор','Парковка'], amenities:['projector','parking','alcohol'], busy:['18:00','19:00','20:00'], rules:'Минимальная бронь 4 часа. Свой алкоголь обсуждается с площадкой.', reviewsText:['Хорошая вместимость и адекватные условия.','Удобно для семейного события.']},
-      {id:'focus-room', title:'Focus Room', subtitle:'переговорная', type:'meeting', capacity:10, price:1200, minHours:2, rating:4.8, reviews:41, score:88, response:'до 9 мин', address:'Воронеж, деловой центр', image:'https://images.unsplash.com/photo-1497366754035-f200968a6e72?auto=format&fit=crop&w=1200&q=86', description:'Минималистичная переговорная для встреч, мастер-классов и камерных презентаций. Есть экран, флипчарт и вода.', tags:['Проектор','Тихо','Центр','Парковка'], amenities:['projector','parking'], busy:['12:00'], rules:'Можно бронировать от 2 часов. Подходит для деловых встреч.', reviewsText:['Тихо и аккуратно.','Быстро подтвердили бронь.']},
-      {id:'vip-hookah', title:'VIP Smoke Room', subtitle:'кальянная VIP', type:'hookah', capacity:8, price:1800, minHours:2, rating:4.5, reviews:77, score:79, response:'до 20 мин', address:'Воронеж, центр', image:'https://images.unsplash.com/photo-1528605248644-14dd04022da1?auto=format&fit=crop&w=1200&q=86', description:'Закрытая VIP-комната для взрослой компании. Можно выбрать кальяны, музыку и дополнительные услуги.', tags:['18+','Кальян','Своя еда','Караоке'], amenities:['hookah','karaoke','ownFood','alcohol'], busy:['21:00'], rules:'Только 18+. Предоплата обязательна после подтверждения.', reviewsText:['Приватно и без лишнего шума.','Хорошо для небольшой компании.']}
+      {id:'cinema-room', venueId:'rooms-cinema', title:'Кинозал Classic', subtitle:'частный кинозал', type:'karaoke', capacity:14, price:1600, minHours:2, rating:4.9, reviews:126, score:96, image:'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?auto=format&fit=crop&w=1200&q=86', description:'Закрытая комната для кинопросмотра, дня рождения или спокойной встречи компанией. Есть большой экран, звук, караоке и мягкая зона.', tags:['Караоке','Проектор','Своя еда','Парковка'], amenities:['karaoke','projector','ownFood','parking'], busy:['18:00'], rules:'Минимальная бронь 2 часа. Предоплата после подтверждения.', reviewsText:['Хороший звук и комфортный зал.','Удобно для небольшого праздника.']},
+      {id:'cinema-neon', venueId:'rooms-cinema', title:'Караоке Neon', subtitle:'караоке-комната', type:'karaoke', capacity:10, price:1400, minHours:2, rating:4.7, reviews:63, score:89, image:'https://images.unsplash.com/photo-1529156069898-49953e39b3ac?auto=format&fit=crop&w=1200&q=86', description:'Более компактная комната в том же заведении: караоке, мягкие диваны, экран и приватная посадка для небольшой компании.', tags:['Караоке','До 10 гостей','Своя еда','Центр'], amenities:['karaoke','ownFood','parking'], busy:['20:00'], rules:'Минимальная бронь 2 часа. Подходит для компаний до 10 гостей.', reviewsText:['Уютнее большого зала.','Быстро подтвердили время.']},
+      {id:'kids-safari', venueId:'kids-loft', title:'Комната Сафари', subtitle:'детская комната', type:'kids', capacity:18, price:1900, minHours:3, rating:4.8, reviews:94, score:94, image:'https://images.unsplash.com/photo-1564429238817-393bd4286b2d?auto=format&fit=crop&w=1200&q=86', description:'Светлая детская комната для дней рождения и семейных событий. Можно пригласить аниматора, принести торт и выбрать пакет с кухней.', tags:['Детская зона','Аниматоры','Своя еда','Без 18+'], amenities:['kidsZone','ownFood','parking'], busy:['16:00','17:00'], rules:'18+ услуги недоступны. Минимальная бронь 3 часа.', reviewsText:['Дети были заняты весь вечер.','Чисто, спокойно, удобно для родителей.']},
+      {id:'kids-cosmos', venueId:'kids-loft', title:'Комната Космос', subtitle:'детская комната', type:'kids', capacity:12, price:1500, minHours:2, rating:4.7, reviews:51, score:88, image:'https://images.unsplash.com/photo-1503454537195-1dcabb73ffb9?auto=format&fit=crop&w=1200&q=86', description:'Компактная детская комната для маленьких праздников. Подходит для семейного события до 12 гостей.', tags:['Детская зона','До 12 гостей','Своя еда','Аниматор'], amenities:['kidsZone','ownFood'], busy:['18:00'], rules:'Без 18+ услуг. Можно бронировать от 2 часов.', reviewsText:['Хорошо для небольшого дня рождения.','Комната светлая и аккуратная.']},
+      {id:'quiet-main', venueId:'quiet-lounge', title:'Lounge Main', subtitle:'лаундж-комната', type:'lounge', capacity:20, price:2200, minHours:2, rating:4.7, reviews:171, score:91, image:'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=1200&q=86', description:'Лаундж для взрослой компании, встреч и камерных вечеринок. Подходит для 18+ форматов, есть кальянная зона и караоке.', tags:['Кальян','Караоке','Алкоголь','Кухня'], amenities:['hookah','karaoke','alcohol'], busy:['19:00','20:00'], rules:'Только 18+. Документы могут попросить на входе.', reviewsText:['Стильно, спокойно, хороший сервис.','Подходит для вечера компанией.']},
+      {id:'quiet-vip', venueId:'quiet-lounge', title:'VIP Smoke Room', subtitle:'кальянная VIP', type:'hookah', capacity:8, price:1800, minHours:2, rating:4.5, reviews:77, score:79, image:'https://images.unsplash.com/photo-1528605248644-14dd04022da1?auto=format&fit=crop&w=1200&q=86', description:'Закрытая VIP-комната для взрослой компании. Можно выбрать кальяны, музыку и дополнительные услуги.', tags:['18+','Кальян','Своя еда','Караоке'], amenities:['hookah','karaoke','ownFood','alcohol'], busy:['21:00'], rules:'Только 18+. Предоплата обязательна после подтверждения.', reviewsText:['Приватно и без лишнего шума.','Хорошо для небольшой компании.']},
+      {id:'event-main', venueId:'event-36', title:'Большой зал 36', subtitle:'банкетный зал', type:'banquet', capacity:36, price:2800, minHours:4, rating:4.6, reviews:58, score:86, image:'https://images.unsplash.com/photo-1519167758481-83f550bb49b3?auto=format&fit=crop&w=1200&q=86', description:'Зал для дней рождения, семейных праздников и небольших корпоративов. Есть кухня, посадка, звук и место под ведущего.', tags:['До 36 гостей','Кухня','Проектор','Парковка'], amenities:['projector','parking','alcohol'], busy:['18:00','19:00','20:00'], rules:'Минимальная бронь 4 часа. Свой алкоголь обсуждается с площадкой.', reviewsText:['Хорошая вместимость и адекватные условия.','Удобно для семейного события.']},
+      {id:'event-small', venueId:'event-36', title:'Камерный зал', subtitle:'банкетная комната', type:'banquet', capacity:18, price:1900, minHours:3, rating:4.6, reviews:34, score:82, image:'https://images.unsplash.com/photo-1555244162-803834f70033?auto=format&fit=crop&w=1200&q=86', description:'Небольшой зал в той же площадке для семейного ужина, юбилея или закрытой встречи.', tags:['До 18 гостей','Кухня','Своя еда','Парковка'], amenities:['parking','ownFood','alcohol'], busy:['17:00'], rules:'Минимальная бронь 3 часа. Условия по еде обсуждаются с администратором.', reviewsText:['Хорошо для камерного события.','Удобно, что рядом большой зал.']},
+      {id:'focus-room', venueId:'focus-hub', title:'Focus Room', subtitle:'переговорная', type:'meeting', capacity:10, price:1200, minHours:2, rating:4.8, reviews:41, score:88, image:'https://images.unsplash.com/photo-1497366754035-f200968a6e72?auto=format&fit=crop&w=1200&q=86', description:'Минималистичная переговорная для встреч, мастер-классов и камерных презентаций. Есть экран, флипчарт и вода.', tags:['Проектор','Тихо','Центр','Парковка'], amenities:['projector','parking'], busy:['12:00'], rules:'Можно бронировать от 2 часов. Подходит для деловых встреч.', reviewsText:['Тихо и аккуратно.','Быстро подтвердили бронь.']},
+      {id:'focus-studio', venueId:'focus-hub', title:'Studio Workshop', subtitle:'комната для мастер-класса', type:'meeting', capacity:18, price:1700, minHours:2, rating:4.7, reviews:29, score:84, image:'https://images.unsplash.com/photo-1517048676732-d65bc937f952?auto=format&fit=crop&w=1200&q=86', description:'Комната для мастер-классов, лекций и небольших командных встреч. Можно переставлять посадку.', tags:['Проектор','До 18 гостей','Флипчарт','Центр'], amenities:['projector','parking'], busy:['14:00'], rules:'Бронь от 2 часов. Еду и напитки можно согласовать заранее.', reviewsText:['Удобно для обучения.','Хороший свет и столы.']}
     ];
 
     const times = Array.from({length: 14}, (_, i) => `${String(i + 10).padStart(2, '0')}:00`);
-    const store = {bookings:'rooms_bookings_v4', profile:'rooms_profile_v4', favorites:'rooms_favorites_v4'};
+    const store = {bookings:'rooms_bookings_v5', profile:'rooms_profile_v5', favorites:'rooms_favorites_v5', partner:'rooms_partner_leads_v5'};
     const $ = id => document.getElementById(id);
     const E = {
       form:$('searchForm'), results:$('results'), empty:$('emptyState'), intro:$('resultIntro'), sort:$('sortMode'), reset:$('resetButton'), showAll:$('showAllButton'),
       date:$('date'), time:$('time'), hours:$('hours'), guests:$('guests'), type:$('spaceType'), age:$('ageMode'), chips:$('filterChips'), typeButtons:$('typeButtons'),
       bookingForm:$('bookingForm'), bookingSpace:$('bookingSpace'), bookingDate:$('bookingDate'), bookingTime:$('bookingTime'), bookingHours:$('bookingHours'), bookingGuests:$('bookingGuests'), clientName:$('clientName'), clientPhone:$('clientPhone'), comment:$('bookingComment'), bookingStatus:$('bookingStatus'), sumTotal:$('sumTotal'), sumPrepay:$('sumPrepay'), history:$('historyList'),
-      partnerForm:$('partnerForm'), partnerStatus:$('partnerStatus'), accountButton:$('accountButton'), accountForm:$('accountForm'), profileName:$('profileName'), profilePhone:$('profilePhone'), noticeButton:$('noticeButton'), cityButton:$('cityButton'), toast:$('toast'), modal:$('spaceModal'), modalContent:$('spaceModalContent')
+      partnerForm:$('partnerForm'), partnerStatus:$('partnerStatus'), partnerRooms:$('partnerRooms'), addRoomButton:$('addRoomButton'), accountButton:$('accountButton'), accountForm:$('accountForm'), profileName:$('profileName'), profilePhone:$('profilePhone'), noticeButton:$('noticeButton'), cityButton:$('cityButton'), toast:$('toast'), modal:$('spaceModal'), modalContent:$('spaceModalContent')
     };
     let favorites = new Set(read(store.favorites, []));
     let last = [...spaces];
+    let partnerRoomIndex = 0;
 
-    function read(key, fallback) {
-      try { return JSON.parse(localStorage.getItem(key)) ?? fallback; }
-      catch { return fallback; }
-    }
+    function read(key, fallback) { try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; } }
     function write(key, value) { localStorage.setItem(key, JSON.stringify(value)); }
     function money(value) { return new Intl.NumberFormat('ru-RU').format(value) + ' ₽'; }
-    function esc(value) {
-      return String(value ?? '')
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/\x22/g, '&quot;')
-        .replace(/'/g, '&#039;');
-    }
-    function initDates() {
-      const d = new Date();
-      const value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-      [E.date, E.bookingDate].forEach(input => { input.min = value; if (!input.value) input.value = value; });
-    }
-    function fillTimes() {
-      const options = times.map(t => `<option value='${t}'>${t}</option>`).join('');
-      E.time.innerHTML = options;
-      E.bookingTime.innerHTML = options;
-      E.time.value = '18:00';
-      E.bookingTime.value = '18:00';
-    }
+    function esc(value) { return String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\x22/g, '&quot;').replace(/'/g, '&#039;'); }
+    function venue(space) { return venues.find(item => item.id === space.venueId) || venues[0]; }
+    function roomsInVenue(venueId) { return spaces.filter(space => space.venueId === venueId); }
+    function wordRooms(count) { const n = Math.abs(count) % 100, n1 = n % 10; if (n > 10 && n < 20) return 'комнат'; if (n1 > 1 && n1 < 5) return 'комнаты'; if (n1 === 1) return 'комната'; return 'комнат'; }
+    function initDates() { const d = new Date(), value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; [E.date, E.bookingDate].forEach(input => { input.min = value; if (!input.value) input.value = value; }); }
+    function fillTimes() { const options = times.map(t => `<option value='${t}'>${t}</option>`).join(''); E.time.innerHTML = options; E.bookingTime.innerHTML = options; E.time.value = '18:00'; E.bookingTime.value = '18:00'; }
     function selectedAmenities() { return [...E.chips.querySelectorAll('input:checked')].map(input => input.value); }
-    function syncAdult() {
-      const minors = E.age.value === 'mixed';
-      E.chips.querySelectorAll('[data-adult=true]').forEach(label => {
-        const input = label.querySelector('input');
-        label.classList.toggle('disabled', minors);
-        if (minors) input.checked = false;
-      });
-    }
-    function free(space, start, hours) {
-      const index = times.indexOf(start);
-      if (index < 0 || index + hours > times.length) return false;
-      for (let i = 0; i < hours; i++) if (space.busy.includes(times[index + i])) return false;
-      return true;
-    }
-    function near(space, start, hours) {
-      const index = times.indexOf(start);
-      for (const offset of [1, -1, 2, -2, 3, -3]) {
-        const candidate = times[index + offset];
-        if (candidate && free(space, candidate, hours)) return candidate;
-      }
-      return '';
-    }
-    function filters() {
-      return {type:E.type.value, time:E.time.value, hours:Number(E.hours.value), guests:Number(E.guests.value || 1), age:E.age.value, amenities:selectedAmenities()};
-    }
-    function match(space, f, strict = false) {
-      if (f.type !== 'any' && space.type !== f.type) return false;
-      if (space.capacity < f.guests) return false;
-      if (f.age === 'mixed' && (space.amenities.includes('hookah') || space.amenities.includes('alcohol'))) return false;
-      if (!f.amenities.every(item => space.amenities.includes(item))) return false;
-      if (strict && !free(space, f.time, f.hours)) return false;
-      return true;
-    }
-    function sortSpaces(list) {
-      const mode = E.sort.value;
-      const arr = [...list];
-      if (mode === 'rating') return arr.sort((a, b) => b.rating - a.rating);
-      if (mode === 'priceAsc') return arr.sort((a, b) => a.price - b.price);
-      if (mode === 'capacity') return arr.sort((a, b) => b.capacity - a.capacity);
-      return arr.sort((a, b) => b.score - a.score);
-    }
+    function syncAdult() { const minors = E.age.value === 'mixed'; E.chips.querySelectorAll('[data-adult=true]').forEach(label => { const input = label.querySelector('input'); label.classList.toggle('disabled', minors); if (minors) input.checked = false; }); }
+    function free(space, start, hours) { const index = times.indexOf(start); if (index < 0 || index + hours > times.length) return false; for (let i = 0; i < hours; i++) if (space.busy.includes(times[index + i])) return false; return true; }
+    function near(space, start, hours) { const index = times.indexOf(start); for (const offset of [1, -1, 2, -2, 3, -3]) { const candidate = times[index + offset]; if (candidate && free(space, candidate, hours)) return candidate; } return ''; }
+    function filters() { return {type:E.type.value, time:E.time.value, hours:Number(E.hours.value), guests:Number(E.guests.value || 1), age:E.age.value, amenities:selectedAmenities()}; }
+    function match(space, f, strict = false) { if (f.type !== 'any' && space.type !== f.type) return false; if (space.capacity < f.guests) return false; if (f.age === 'mixed' && (space.amenities.includes('hookah') || space.amenities.includes('alcohol'))) return false; if (!f.amenities.every(item => space.amenities.includes(item))) return false; if (strict && !free(space, f.time, f.hours)) return false; return true; }
+    function sortSpaces(list) { const mode = E.sort.value, arr = [...list]; if (mode === 'rating') return arr.sort((a, b) => b.rating - a.rating); if (mode === 'priceAsc') return arr.sort((a, b) => a.price - b.price); if (mode === 'capacity') return arr.sort((a, b) => b.capacity - a.capacity); return arr.sort((a, b) => b.score - a.score); }
+    function matchingSiblings(space, f) { return roomsInVenue(space.venueId).filter(item => item.id !== space.id && match(item, f, false)); }
+
     function render(list, f = filters(), searched = false) {
       const arr = sortSpaces(list);
       last = arr;
       E.empty.hidden = arr.length > 0;
+      const venueCount = new Set(arr.map(space => space.venueId)).size;
+      if (arr.length) E.intro.textContent = `${arr.length} ${wordRooms(arr.length)} в ${venueCount} заведениях. Карточка показывает конкретную комнату и соседние варианты в этом же заведении.`;
       E.results.innerHTML = arr.map(space => {
-        const exact = free(space, f.time, f.hours);
-        const alt = exact ? '' : near(space, f.time, f.hours);
-        const status = searched ? (exact ? `Свободно ${f.time}` : (alt ? `Есть окно ${alt}` : 'Уточнить окно')) : `Ответ ${space.response}`;
-        const favorite = favorites.has(space.id);
+        const v = venue(space), exact = free(space, f.time, f.hours), alt = exact ? '' : near(space, f.time, f.hours), status = searched ? (exact ? `Свободно ${f.time}` : (alt ? `Есть окно ${alt}` : 'Уточнить окно')) : `Ответ ${v.response}`;
+        const favorite = favorites.has(space.id), siblings = matchingSiblings(space, f);
         return `<article class='card' data-card='${space.id}' tabindex='0' role='button' aria-label='Открыть ${esc(space.title)}'>
-          <div class='photo'>
-            <img src='${space.image}' alt='${esc(space.title)}'>
-            <span class='badge'>${esc(status)}</span>
-            <button class='fav ${favorite ? 'active' : ''}' data-fav='${space.id}' type='button' aria-label='В избранное'>${favorite ? '♥' : '♡'}</button>
-          </div>
+          <div class='photo'><img src='${space.image}' alt='${esc(space.title)}'><span class='badge'>${esc(status)}</span><button class='fav ${favorite ? 'active' : ''}' data-fav='${space.id}' type='button' aria-label='В избранное'>${favorite ? '♥' : '♡'}</button></div>
           <div class='card-body'>
+            <div class='venue-line'><span>${esc(v.title)} · ${esc(v.district)}</span>${siblings.length ? `<span class='venue-more'>ещё ${siblings.length} ${wordRooms(siblings.length)}</span>` : ''}</div>
             <div class='card-title'><div><h3>${esc(space.title)}</h3><div class='muted'>${esc(space.subtitle)}</div></div><span class='rating'>${space.rating} · ${space.reviews}</span></div>
-            <div class='meta'><span>До ${space.capacity} гостей</span><span>от ${space.minHours} ч</span><span>${esc(space.address)}</span></div>
+            <div class='meta'><span>До ${space.capacity} гостей</span><span>от ${space.minHours} ч</span><span>${esc(v.address)}</span></div>
             <div class='tags'>${space.tags.slice(0, 4).map(tag => `<span class='tag'>${esc(tag)}</span>`).join('')}</div>
             <div class='card-foot'><div class='price'>${money(space.price)} <span>/ час</span></div><div class='actions' style='margin:0'><button class='btn small' data-open='${space.id}' type='button'>Подробнее</button><button class='btn small primary' data-book='${space.id}' type='button'>Бронь</button></div></div>
           </div>
         </article>`;
       }).join('');
     }
-    function search(event) {
-      if (event) event.preventDefault();
-      syncAdult();
-      const f = filters();
-      const exact = spaces.filter(space => match(space, f, true));
-      const alternatives = spaces.filter(space => !exact.includes(space) && match(space, f, false) && near(space, f.time, f.hours));
-      const result = [...exact, ...alternatives];
-      E.intro.textContent = exact.length ? `Нашли ${exact.length} точн. совпадений и ${alternatives.length} альтернативных окон.` : (alternatives.length ? `Точного времени нет, но есть ${alternatives.length} близких свободных окон.` : 'Свободных вариантов по выбранным условиям не найдено.');
-      render(result, f, true);
-      $('catalog').scrollIntoView({behavior:'smooth'});
-    }
-    function all() {
-      E.intro.textContent = 'Широкая витрина с фильтрами, свободными окнами и логикой будущей CRM Rooms.';
-      render(spaces, filters(), false);
-    }
+
+    function search(event) { if (event) event.preventDefault(); syncAdult(); const f = filters(), exact = spaces.filter(space => match(space, f, true)), alternatives = spaces.filter(space => !exact.includes(space) && match(space, f, false) && near(space, f.time, f.hours)), result = [...exact, ...alternatives]; E.intro.textContent = exact.length ? `Нашли ${exact.length} точн. совпадений и ${alternatives.length} альтернативных окон.` : (alternatives.length ? `Точного времени нет, но есть ${alternatives.length} близких свободных окон.` : 'Свободных вариантов по выбранным условиям не найдено.'); render(result, f, true); $('catalog').scrollIntoView({behavior:'smooth'}); }
+    function all() { E.intro.textContent = 'Выдача строится по комнатам. Если в одном заведении есть несколько подходящих комнат, Rooms показывает это прямо в карточке.'; render(spaces, filters(), false); }
+
     function openSpace(id) {
-      const space = spaces.find(item => item.id === id);
-      if (!space) return;
-      const f = filters();
-      const exact = free(space, f.time, f.hours);
-      const alt = exact ? '' : near(space, f.time, f.hours);
+      const space = spaces.find(item => item.id === id); if (!space) return;
+      const v = venue(space), f = filters(), exact = free(space, f.time, f.hours), alt = exact ? '' : near(space, f.time, f.hours), siblings = roomsInVenue(space.venueId);
       E.modalContent.innerHTML = `<div class='modal-grid'>
         <div class='photo'><img src='${space.image}' alt='${esc(space.title)}'></div>
         <div class='facts'>
-          <div class='fact'><span>Цена</span><strong>${money(space.price)} / час</strong></div>
+          <div class='fact'><span>Заведение</span><strong>${esc(v.title)}</strong></div>
+          <div class='fact'><span>Цена комнаты</span><strong>${money(space.price)} / час</strong></div>
           <div class='fact'><span>Вместимость</span><strong>до ${space.capacity} гостей</strong></div>
           <div class='fact'><span>Свободное окно</span><strong>${exact ? f.time : (alt || 'уточнить')}</strong></div>
-          <div class='fact'><span>Рейтинг</span><strong>${space.rating} · ${space.reviews} отзывов</strong></div>
         </div>
       </div>
       <div><span class='kicker'>${esc(space.subtitle)}</span><h2 style='margin:10px 0 6px'>${esc(space.title)}</h2><p class='muted' style='line-height:1.65'>${esc(space.description)}</p></div>
-      <div class='tags'>${space.tags.map(tag => `<span class='tag'>${esc(tag)}</span>`).join('')}</div>
-      <div class='summary'>
-        <div class='row'><span>Адрес</span><strong>${esc(space.address)}</strong></div>
-        <div class='row'><span>Правила</span><strong>${esc(space.rules)}</strong></div>
-        <div class='row'><span>Отзывы</span><strong>${space.reviewsText.map(esc).join('<br>')}</strong></div>
-      </div>
-      <div class='actions'><button class='btn primary' data-book='${space.id}' type='button'>Забронировать</button><button class='btn' data-close='spaceModal' type='button'>К каталогу</button></div>`;
+      <div class='venue-strip'><img src='${v.image}' alt='${esc(v.title)}'><div><h3 style='margin:0 0 6px'>${esc(v.title)}</h3><p class='muted' style='margin:0 0 10px;line-height:1.55'>${esc(v.description)}</p><div class='tags'>${v.amenities.map(item => `<span class='tag'>${esc(item)}</span>`).join('')}</div></div></div>
+      <div><h3 style='margin:0 0 10px'>Комнаты в этом заведении</h3><div class='room-options'>${siblings.map(item => `<button class='room-option ${item.id === space.id ? 'active' : ''}' data-open='${item.id}' type='button'><strong>${esc(item.title)}</strong><span>${esc(item.subtitle)} · до ${item.capacity} гостей · ${money(item.price)} / час</span></button>`).join('')}</div></div>
+      <div class='summary'><div class='row'><span>Адрес</span><strong>${esc(v.address)}</strong></div><div class='row'><span>Правила комнаты</span><strong>${esc(space.rules)}</strong></div><div class='row'><span>Отзывы</span><strong>${space.reviewsText.map(esc).join('<br>')}</strong></div></div>
+      <div class='actions'><button class='btn primary' data-book='${space.id}' type='button'>Забронировать эту комнату</button><button class='btn' data-close='spaceModal' type='button'>К каталогу</button></div>`;
       show('spaceModal');
     }
-    function book(id) {
-      const space = spaces.find(item => item.id === id);
-      if (!space) return;
-      E.bookingSpace.value = space.id;
-      E.bookingDate.value = E.date.value;
-      E.bookingTime.value = E.time.value;
-      E.bookingHours.value = String(Math.max(space.minHours, Number(E.hours.value)));
-      E.bookingGuests.value = Math.min(Number(E.guests.value || 1), space.capacity);
-      sum();
-      close('spaceModal');
-      $('booking').scrollIntoView({behavior:'smooth'});
-    }
-    function sum() {
-      const space = spaces.find(item => item.id === E.bookingSpace.value) || spaces[0];
-      const hours = Number(E.bookingHours.value || 2);
-      const total = space.price * hours;
-      E.sumTotal.textContent = money(total);
-      E.sumPrepay.textContent = money(Math.ceil(total * .3));
-    }
-    function phone(raw) {
-      const digits = String(raw || '').replace(/\D/g, '');
-      const normalized = digits.startsWith('8') ? `7${digits.slice(1)}` : digits;
-      return normalized.length >= 11 ? `+${normalized.slice(0, 11)}` : '';
-    }
-    function submitBooking(event) {
-      event.preventDefault();
-      const space = spaces.find(item => item.id === E.bookingSpace.value);
-      const clientPhone = phone(E.clientPhone.value);
-      if (!space || !clientPhone) return toast('Проверьте помещение и телефон.');
-      if (Number(E.bookingGuests.value) > space.capacity) return toast(`Для ${E.bookingGuests.value} гостей это помещение не подходит. Максимум ${space.capacity}.`);
-      const hours = Number(E.bookingHours.value);
-      const total = space.price * hours;
-      const booking = {id:`R-${Date.now().toString().slice(-6)}`, space:space.title, date:E.bookingDate.value, time:E.bookingTime.value, hours, guests:Number(E.bookingGuests.value), name:E.clientName.value.trim(), phone:clientPhone, comment:E.comment.value.trim(), total, prepay:Math.ceil(total * .3), status:'Ожидает подтверждения площадкой'};
-      const list = read(store.bookings, []);
-      list.unshift(booking);
-      write(store.bookings, list.slice(0, 20));
-      E.bookingStatus.textContent = `Заявка ${booking.id} создана.`;
-      toast('Заявка создана. В реальном MVP партнёр подтвердит слот, затем откроется предоплата.');
-      history();
-    }
-    function history() {
-      const list = read(store.bookings, []);
-      E.history.innerHTML = list.length ? list.map(booking => `<div class='history-item'><strong>${esc(booking.space)} · ${esc(booking.id)}</strong><span class='muted'>${esc(booking.date)} в ${esc(booking.time)} · ${booking.hours} ч · ${booking.guests} гостей</span><span class='muted'>Предоплата после подтверждения: ${money(booking.prepay)} · ${esc(booking.status)}</span>${booking.comment ? `<span class='muted'>Комментарий: ${esc(booking.comment)}</span>` : ''}</div>`).join('') : `<div class='empty'>Пока нет заявок. Выберите помещение и создайте первую бронь.</div>`;
-    }
-    function partner(event) {
-      event.preventDefault();
-      E.partnerStatus.textContent = 'Заявка сохранена в демо-режиме.';
-      toast('Заявка партнёра сохранена. В продакшене она уйдёт в админку Rooms.');
-      E.partnerForm.reset();
-      $('partnerCity').value = 'Воронеж';
-    }
-    function profile(event) {
-      event.preventDefault();
-      const profile = {name:E.profileName.value.trim(), phone:phone(E.profilePhone.value)};
-      if (!profile.name || !profile.phone) return toast('Введите имя и корректный телефон.');
-      write(store.profile, profile);
-      hydrate();
-      close('accountModal');
-      toast('Профиль сохранён.');
-    }
-    function hydrate() {
-      const profile = read(store.profile, null);
-      if (!profile) return;
-      E.accountButton.textContent = profile.name.slice(0, 1).toUpperCase();
-      E.profileName.value = profile.name;
-      E.profilePhone.value = profile.phone;
-      E.clientName.value = E.clientName.value || profile.name;
-      E.clientPhone.value = E.clientPhone.value || profile.phone;
-    }
-    function favorite(id) {
-      favorites.has(id) ? favorites.delete(id) : favorites.add(id);
-      write(store.favorites, [...favorites]);
-      render(last, filters(), false);
-    }
-    function show(id) {
-      $(id).classList.add('open');
-      $(id).setAttribute('aria-hidden', 'false');
-      document.body.classList.add('lock');
-    }
-    function close(id) {
-      const modal = $(id);
-      if (!modal) return;
-      modal.classList.remove('open');
-      modal.setAttribute('aria-hidden', 'true');
-      if (!document.querySelector('.modal-bg.open')) document.body.classList.remove('lock');
-    }
-    function toast(message) {
-      E.toast.textContent = message;
-      E.toast.classList.add('show');
-      clearTimeout(window.__roomsToast);
-      window.__roomsToast = setTimeout(() => E.toast.classList.remove('show'), 3600);
-    }
-    function reset() {
-      E.type.value = 'any';
-      E.typeButtons.querySelectorAll('.filter-pill').forEach(button => button.classList.toggle('active', button.dataset.type === 'any'));
-      E.guests.value = 8;
-      E.hours.value = '2';
-      E.time.value = '18:00';
-      E.age.value = 'mixed';
-      E.chips.querySelectorAll('input').forEach(input => { input.checked = false; });
-      syncAdult();
-      all();
-    }
-    function init() {
-      initDates();
-      fillTimes();
-      spaces.forEach(space => {
-        const option = document.createElement('option');
-        option.value = space.id;
-        option.textContent = `${space.title} · ${space.subtitle}`;
-        E.bookingSpace.appendChild(option);
-      });
-      all();
-      history();
-      hydrate();
-      sum();
-      syncAdult();
-    }
+
+    function book(id) { const space = spaces.find(item => item.id === id); if (!space) return; E.bookingSpace.value = space.id; E.bookingDate.value = E.date.value; E.bookingTime.value = E.time.value; E.bookingHours.value = String(Math.max(space.minHours, Number(E.hours.value))); E.bookingGuests.value = Math.min(Number(E.guests.value || 1), space.capacity); sum(); close('spaceModal'); $('booking').scrollIntoView({behavior:'smooth'}); }
+    function sum() { const space = spaces.find(item => item.id === E.bookingSpace.value) || spaces[0], hours = Number(E.bookingHours.value || 2), total = space.price * hours; E.sumTotal.textContent = money(total); E.sumPrepay.textContent = money(Math.ceil(total * .3)); }
+    function phone(raw) { const digits = String(raw || '').replace(/\D/g, ''), normalized = digits.startsWith('8') ? `7${digits.slice(1)}` : digits; return normalized.length >= 11 ? `+${normalized.slice(0, 11)}` : ''; }
+    function submitBooking(event) { event.preventDefault(); const space = spaces.find(item => item.id === E.bookingSpace.value), v = space ? venue(space) : null, clientPhone = phone(E.clientPhone.value); if (!space || !clientPhone) return toast('Проверьте комнату и телефон.'); if (Number(E.bookingGuests.value) > space.capacity) return toast(`Для ${E.bookingGuests.value} гостей эта комната не подходит. Максимум ${space.capacity}.`); const hours = Number(E.bookingHours.value), total = space.price * hours, booking = {id:`R-${Date.now().toString().slice(-6)}`, venue:v.title, space:space.title, date:E.bookingDate.value, time:E.bookingTime.value, hours, guests:Number(E.bookingGuests.value), name:E.clientName.value.trim(), phone:clientPhone, comment:E.comment.value.trim(), total, prepay:Math.ceil(total * .3), status:'Ожидает подтверждения площадкой'}; const list = read(store.bookings, []); list.unshift(booking); write(store.bookings, list.slice(0, 20)); E.bookingStatus.textContent = `Заявка ${booking.id} создана.`; toast('Заявка создана на конкретную комнату. В MVP партнёр подтвердит слот, затем откроется предоплата.'); history(); }
+    function history() { const list = read(store.bookings, []); E.history.innerHTML = list.length ? list.map(booking => `<div class='history-item'><strong>${esc(booking.venue)} · ${esc(booking.space)} · ${esc(booking.id)}</strong><span class='muted'>${esc(booking.date)} в ${esc(booking.time)} · ${booking.hours} ч · ${booking.guests} гостей</span><span class='muted'>Предоплата после подтверждения: ${money(booking.prepay)} · ${esc(booking.status)}</span>${booking.comment ? `<span class='muted'>Комментарий: ${esc(booking.comment)}</span>` : ''}</div>`).join('') : `<div class='empty'>Пока нет заявок. Выберите комнату и создайте первую бронь.</div>`; }
+
+    function roomForm(index) { return `<div class='room-entry' data-room-entry><div class='room-entry-head'><strong>Комната ${index}</strong><button class='btn small clear' type='button' data-remove-room>Удалить</button></div><div class='form'><div class='field'><label>Название комнаты</label><input data-room-name placeholder='Например: Сафари' required></div><div class='field'><label>Тип</label><select data-room-type><option>Лаундж</option><option>Детская комната</option><option>Караоке-комната</option><option>Банкетный зал</option><option>Переговорная</option><option>Кальянная VIP</option></select></div><div class='field'><label>Вместимость</label><input data-room-cap type='number' min='1' placeholder='До 20 гостей' required></div><div class='field'><label>Цена / час</label><input data-room-price type='number' min='0' placeholder='1900' required></div><div class='field full'><label>Услуги и правила комнаты</label><textarea data-room-features placeholder='Караоке, проектор, детская зона, можно со своей едой, 18+ ограничения'></textarea></div><div class='field full'><label>Фото комнаты</label><input data-room-photo placeholder='Ссылка на фото или отметка: загрузить позже'></div></div></div>`; }
+    function addPartnerRoom() { partnerRoomIndex += 1; E.partnerRooms.insertAdjacentHTML('beforeend', roomForm(partnerRoomIndex)); }
+    function partner(event) { event.preventDefault(); const rooms = [...E.partnerRooms.querySelectorAll('[data-room-entry]')].map(entry => ({name:entry.querySelector('[data-room-name]').value.trim(), type:entry.querySelector('[data-room-type]').value, cap:entry.querySelector('[data-room-cap]').value, price:entry.querySelector('[data-room-price]').value, features:entry.querySelector('[data-room-features]').value.trim()})).filter(room => room.name || room.cap || room.price); if (!rooms.length) return toast('Добавьте хотя бы одну комнату внутри заведения.'); const lead = {id:`P-${Date.now().toString().slice(-6)}`, city:$('partnerCity').value.trim(), venue:$('partnerVenueName').value.trim(), address:$('partnerAddress').value.trim(), contact:$('partnerContact').value.trim(), phone:$('partnerPhone').value.trim(), rooms, createdAt:new Date().toISOString()}; const list = read(store.partner, []); list.unshift(lead); write(store.partner, list.slice(0, 20)); E.partnerStatus.textContent = `Заведение и ${rooms.length} ${wordRooms(rooms.length)} сохранены.`; toast('Заявка партнёра сохранена: теперь в ней есть заведение и список комнат.'); }
+
+    function profile(event) { event.preventDefault(); const profile = {name:E.profileName.value.trim(), phone:phone(E.profilePhone.value)}; if (!profile.name || !profile.phone) return toast('Введите имя и корректный телефон.'); write(store.profile, profile); hydrate(); close('accountModal'); toast('Профиль сохранён.'); }
+    function hydrate() { const profile = read(store.profile, null); if (!profile) return; E.accountButton.textContent = profile.name.slice(0, 1).toUpperCase(); E.profileName.value = profile.name; E.profilePhone.value = profile.phone; E.clientName.value = E.clientName.value || profile.name; E.clientPhone.value = E.clientPhone.value || profile.phone; }
+    function favorite(id) { favorites.has(id) ? favorites.delete(id) : favorites.add(id); write(store.favorites, [...favorites]); render(last, filters(), false); }
+    function show(id) { $(id).classList.add('open'); $(id).setAttribute('aria-hidden', 'false'); document.body.classList.add('lock'); }
+    function close(id) { const modal = $(id); if (!modal) return; modal.classList.remove('open'); modal.setAttribute('aria-hidden', 'true'); if (!document.querySelector('.modal-bg.open')) document.body.classList.remove('lock'); }
+    function toast(message) { E.toast.textContent = message; E.toast.classList.add('show'); clearTimeout(window.__roomsToast); window.__roomsToast = setTimeout(() => E.toast.classList.remove('show'), 3600); }
+    function reset() { E.type.value = 'any'; E.typeButtons.querySelectorAll('.filter-pill').forEach(button => button.classList.toggle('active', button.dataset.type === 'any')); E.guests.value = 8; E.hours.value = '2'; E.time.value = '18:00'; E.age.value = 'mixed'; E.chips.querySelectorAll('input').forEach(input => { input.checked = false; }); syncAdult(); all(); }
+    function init() { initDates(); fillTimes(); spaces.forEach(space => { const option = document.createElement('option'), v = venue(space); option.value = space.id; option.textContent = `${v.title} · ${space.title}`; E.bookingSpace.appendChild(option); }); all(); history(); hydrate(); sum(); syncAdult(); addPartnerRoom(); }
 
     E.form.addEventListener('submit', search);
     E.showAll.addEventListener('click', () => { all(); $('catalog').scrollIntoView({behavior:'smooth'}); });
@@ -936,41 +732,18 @@
     E.age.addEventListener('change', syncAdult);
     E.chips.addEventListener('change', syncAdult);
     E.type.addEventListener('change', () => { E.typeButtons.querySelectorAll('.filter-pill').forEach(button => button.classList.toggle('active', button.dataset.type === E.type.value)); });
-    E.typeButtons.addEventListener('click', event => {
-      const button = event.target.closest('[data-type]');
-      if (!button) return;
-      E.type.value = button.dataset.type;
-      E.typeButtons.querySelectorAll('.filter-pill').forEach(item => item.classList.toggle('active', item === button));
-      search();
-    });
+    E.typeButtons.addEventListener('click', event => { const button = event.target.closest('[data-type]'); if (!button) return; E.type.value = button.dataset.type; E.typeButtons.querySelectorAll('.filter-pill').forEach(item => item.classList.toggle('active', item === button)); search(); });
     E.bookingForm.addEventListener('submit', submitBooking);
     [E.bookingSpace, E.bookingHours].forEach(element => element.addEventListener('change', sum));
     E.partnerForm.addEventListener('submit', partner);
+    E.addRoomButton.addEventListener('click', addPartnerRoom);
+    E.partnerRooms.addEventListener('click', event => { const remove = event.target.closest('[data-remove-room]'); if (!remove) return; const entries = E.partnerRooms.querySelectorAll('[data-room-entry]'); if (entries.length === 1) return toast('Оставьте хотя бы одну комнату.'); remove.closest('[data-room-entry]').remove(); });
     E.accountForm.addEventListener('submit', profile);
     E.accountButton.addEventListener('click', () => show('accountModal'));
     E.noticeButton.addEventListener('click', () => toast('Уведомления: заявка подтверждена, предоплата ожидает клиента. Это демо-событие.'));
     E.cityButton.addEventListener('click', () => toast('На старте доступен Воронеж. Архитектура рассчитана на города России.'));
-    document.addEventListener('click', event => {
-      const openId = event.target.closest('[data-open]')?.dataset.open;
-      const bookId = event.target.closest('[data-book]')?.dataset.book;
-      const favoriteId = event.target.closest('[data-fav]')?.dataset.fav;
-      const closeId = event.target.closest('[data-close]')?.dataset.close;
-      const interactive = event.target.closest('button, a, input, select, textarea, label');
-      const cardId = interactive ? '' : event.target.closest('[data-card]')?.dataset.card;
-      if (cardId) openSpace(cardId);
-      if (openId) openSpace(openId);
-      if (bookId) book(bookId);
-      if (favoriteId) favorite(favoriteId);
-      if (closeId) close(closeId);
-      if (event.target.classList.contains('modal-bg')) close(event.target.id);
-    });
-    document.addEventListener('keydown', event => {
-      if (event.key === 'Escape') document.querySelectorAll('.modal-bg.open').forEach(modal => close(modal.id));
-      if ((event.key === 'Enter' || event.key === ' ') && event.target.matches('[data-card]')) {
-        event.preventDefault();
-        openSpace(event.target.dataset.card);
-      }
-    });
+    document.addEventListener('click', event => { const openId = event.target.closest('[data-open]')?.dataset.open, bookId = event.target.closest('[data-book]')?.dataset.book, favoriteId = event.target.closest('[data-fav]')?.dataset.fav, closeId = event.target.closest('[data-close]')?.dataset.close, interactive = event.target.closest('button, a, input, select, textarea, label'), cardId = interactive ? '' : event.target.closest('[data-card]')?.dataset.card; if (cardId) openSpace(cardId); if (openId) openSpace(openId); if (bookId) book(bookId); if (favoriteId) favorite(favoriteId); if (closeId) close(closeId); if (event.target.classList.contains('modal-bg')) close(event.target.id); });
+    document.addEventListener('keydown', event => { if (event.key === 'Escape') document.querySelectorAll('.modal-bg.open').forEach(modal => close(modal.id)); if ((event.key === 'Enter' || event.key === ' ') && event.target.matches('[data-card]')) { event.preventDefault(); openSpace(event.target.dataset.card); } });
     init();
   </script>
 </body>

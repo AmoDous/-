@@ -425,6 +425,13 @@
     .admin-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
     .admin-actions .btn{min-height:38px;padding:0 12px}
     .booking-flow{display:flex;flex-wrap:wrap;gap:6px;margin-top:9px}
+    .booking-filters{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}
+    .booking-filter{
+      min-height:38px;border:1px solid var(--line);border-radius:10px;background:#fff;color:var(--muted);
+      padding:0 11px;font-weight:850;transition:.18s ease;
+    }
+    .booking-filter:hover{border-color:#e1b5a7;color:var(--green)}
+    .booking-filter.active{border-color:#e1b5a7;background:var(--mint);color:var(--green)}
     .flow-step{
       display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:999px;
       background:#fff;padding:6px 9px;color:var(--muted);font-size:12px;font-weight:850;
@@ -726,7 +733,7 @@
       {room:"terrace-hall",name:"Екатерина",rating:5,date:"июнь 2026",text:"Светлый зал, красиво смотрится на фото. Для семейного банкета оказалось удобно по посадке и по общению с площадкой."}
     ];
     const E={cityButton:$("cityButton"),heroCityLabel:$("heroCityLabel"),noticeButton:$("noticeButton"),noticeBadge:$("noticeBadge"),accountButton:$("accountButton"),searchForm:$("searchForm"),searchCity:$("searchCity"),spaceType:$("spaceType"),date:$("date"),dateDisplay:$("dateDisplay"),time:$("time"),hours:$("hours"),guests:$("guests"),age:$("ageMode"),chips:$("chips"),advancedToggle:$("advancedToggle"),advancedRow:$("advancedRow"),results:$("results"),empty:$("empty"),count:$("countText"),intro:$("resultIntro"),sort:$("sortMode"),showAll:$("showAll"),resetButton:$("resetButton"),scenarioGrid:$("scenarioGrid"),partnerForm:$("partnerForm"),partnerStatus:$("partnerStatus"),partnerEntry:$("partnerEntry"),modal:$("modal"),modalBox:$("modalBox"),modalContent:$("modalContent"),modalClose:$("modalClose"),toast:$("toast"),partnerAlert:$("partnerAlert")};
-    let state={city:"Воронеж",type:"any",date:today,time:"12:00",hours:3,guests:8,age:"any",features:[]},last=[];
+    let state={city:"Воронеж",type:"any",date:today,time:"12:00",hours:3,guests:8,age:"any",features:[]},last=[],profileBookingFilter="active";
 
     function esc(s){return String(s??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]))}
     function read(k,f){try{return JSON.parse(localStorage.getItem(k))??f}catch{return f}}
@@ -912,6 +919,12 @@
       if(isPrepayPaid(b)||status==="paid")return "paid";
       if((status==="awaiting_payment"||status==="confirmed")&&!isPaymentHoldActive(b))return "expired";
       return status==="confirmed"?"awaiting_payment":status;
+    }
+    function profileBookingGroup(b){
+      const status=effectiveBookingStatus(b);
+      if(["visited","completed"].includes(status))return "completed";
+      if(["cancelled","expired"].includes(status))return "cancelled";
+      return "active";
     }
     function isBlockingBooking(b){
       const status=effectiveBookingStatus(b);
@@ -1181,9 +1194,10 @@
       E.partnerAlert.classList.remove("show");
       saveCurrentUserNotice({...currentUserNotice(),unread:0});
       if(!current()){renderAuth();updateNoticeBadge();return}
-      renderProfile();
+      const noticed=latestUserNoticeBooking();
+      profileBookingFilter=noticed?profileBookingGroup(noticed):"active";
+      renderProfile(true);
       updateNoticeBadge();
-      requestAnimationFrame(()=>document.querySelector("[data-profile-bookings]")?.scrollIntoView({behavior:"smooth",block:"start"}));
     }
     function handleNoticeClick(){
       E.partnerAlert.dataset.noticeTarget==="profile"?openProfileBookings():openPartnerBookings();
@@ -1376,11 +1390,16 @@
       const acc=current();if(!acc)return renderAuth();
       openModal(`<div class="admin-item-head"><div><span class="kicker">Личный кабинет</span><h2 style="margin:4px 0 6px">Личные данные</h2><p class="muted" style="margin:0">Контакты используются для заявок и подтверждений бронирования.</p></div><button class="btn" data-profile-back type="button">Назад</button></div><form id="personalDataForm" style="margin-top:16px"><div class="form"><div class="field"><label>Имя</label><input name="name" value="${esc(acc.name||"")}" autocomplete="name" required></div><div class="field"><label>Email</label><input name="email" type="email" value="${esc(acc.email||"")}" autocomplete="email" required></div><div class="field"><label>Телефон</label><input name="phone" type="tel" value="${esc(acc.phone||"")}" autocomplete="tel" placeholder="+7..." required></div><div class="field"><label>Город поиска</label><select name="city">${cities.map(c=>`<option ${c===(acc.city||state.city)?"selected":""}>${c}</option>`).join("")}</select></div><div class="field full"><label>${acc.password?"Новый пароль":"Создайте пароль"}</label><input name="password" type="password" minlength="4" autocomplete="new-password" placeholder="${acc.password?"Оставьте пустым, если не хотите менять":"Минимум 4 символа"}" ${acc.password?"":"required"}></div></div><div class="chips" style="margin-top:14px"><button class="btn primary" type="submit">Сохранить данные</button></div></form>`,true);
     }
-    function renderProfile(){
+    function renderProfile(focusBookings=false){
       const acc=current();if(!acc)return renderAuth();
       if(isAdmin(acc))return renderAdminDashboard();
-      const fav=favorites(),books=read(store.bookings,[]).filter(b=>phone(b.phone)===phone(acc.phone));
-      openModal(`<div class="profile-head"><div class="avatar">${esc((acc.name||"R").slice(0,1).toUpperCase())}</div><div><h2 style="margin:0">${esc(acc.name||"Профиль")}</h2><span class="muted">${esc(acc.email||"Почту можно добавить позже")} · ${esc(acc.phone||"")}</span></div></div>${!acc.email?`<div class="profile-block" style="background:#fff7e8;border-color:#f0d9ad"><strong style="font-size:16px;margin:0">Укажите почту, чтобы получать подтверждения брони</strong></div>`:""}<div class="profile-grid"><div class="profile-block"><span class="muted">Заявки</span><strong>${books.length}</strong></div><div class="profile-block"><span class="muted">Избранное</span><strong>${fav.size}</strong></div><div class="profile-block"><span class="muted">Город</span><strong style="font-size:18px">${esc(acc.city||state.city)}</strong></div><div class="profile-block"><span class="muted">Бонусы</span><strong>0</strong></div></div><div class="profile-block"><button class="profile-row profile-row-button" data-profile-favorites type="button"><span>Любимое</span><span>›</span></button><button class="profile-row profile-row-button" data-profile-personal type="button"><span>Личные данные</span><span>›</span></button></div><div class="profile-block" data-profile-bookings><h3 style="margin:0 0 10px">Мои заявки</h3><div class="admin-list">${books.length?books.map(b=>bookingCard(b,"profile")).join(""):`<p class="muted" style="margin:0">Пока заявок нет. Выберите помещение и отправьте бронь.</p>`}</div></div><div class="chips"><button class="btn" data-logout type="button">Выйти</button><button class="btn soft" data-partner-login type="button">Вход для партнёров</button></div>`,true);
+      const fav=favorites(),books=read(store.bookings,[]).filter(b=>phone(b.phone)===phone(acc.phone)),counts={active:0,completed:0,cancelled:0};
+      books.forEach(b=>counts[profileBookingGroup(b)]++);
+      const filtered=profileBookingFilter==="all"?books:books.filter(b=>profileBookingGroup(b)===profileBookingFilter);
+      const emptyText=books.length?`В разделе «${({active:"Активные",completed:"Завершённые",cancelled:"Отменённые"})[profileBookingFilter]||"Все"}» заявок пока нет.`:"Пока заявок нет. Выберите помещение и отправьте бронь.";
+      const filters=[["active","Активные",counts.active],["completed","Завершённые",counts.completed],["cancelled","Отменённые",counts.cancelled],["all","Все",books.length]].map(([id,label,count])=>`<button class="booking-filter ${profileBookingFilter===id?"active":""}" data-profile-booking-filter="${id}" type="button">${label} · ${count}</button>`).join("");
+      openModal(`<div class="profile-head"><div class="avatar">${esc((acc.name||"R").slice(0,1).toUpperCase())}</div><div><h2 style="margin:0">${esc(acc.name||"Профиль")}</h2><span class="muted">${esc(acc.email||"Почту можно добавить позже")} · ${esc(acc.phone||"")}</span></div></div>${!acc.email?`<div class="profile-block" style="background:#fff7e8;border-color:#f0d9ad"><strong style="font-size:16px;margin:0">Укажите почту, чтобы получать подтверждения брони</strong></div>`:""}<div class="profile-grid"><div class="profile-block"><span class="muted">Заявки</span><strong>${books.length}</strong></div><div class="profile-block"><span class="muted">Избранное</span><strong>${fav.size}</strong></div><div class="profile-block"><span class="muted">Город</span><strong style="font-size:18px">${esc(acc.city||state.city)}</strong></div><div class="profile-block"><span class="muted">Бонусы</span><strong>0</strong></div></div><div class="profile-block"><button class="profile-row profile-row-button" data-profile-favorites type="button"><span>Любимое</span><span>›</span></button><button class="profile-row profile-row-button" data-profile-personal type="button"><span>Личные данные</span><span>›</span></button></div><div class="profile-block" data-profile-bookings><h3 style="margin:0">Мои заявки</h3><div class="booking-filters">${filters}</div><div class="admin-list">${filtered.length?filtered.map(b=>bookingCard(b,"profile")).join(""):`<p class="muted" style="margin:0">${emptyText}</p>`}</div></div><div class="chips"><button class="btn" data-logout type="button">Выйти</button><button class="btn soft" data-partner-login type="button">Вход для партнёров</button></div>`,true,!focusBookings);
+      if(focusBookings)requestAnimationFrame(()=>document.querySelector("[data-profile-bookings]")?.scrollIntoView({behavior:"smooth",block:"start"}));
     }
     function renderAdminDashboard(keep=false){
       const top=E.modalBox.scrollTop,books=adminBookings(),leads=adminLeads(),reviews=[...seedReviews,...customReviews()],pending=books.filter(b=>effectiveBookingStatus(b)==="pending").length,confirmed=books.filter(b=>["awaiting_payment","paid"].includes(effectiveBookingStatus(b))).length,visitCount=books.filter(b=>["visited","completed"].includes(effectiveBookingStatus(b))).length;
@@ -1608,7 +1627,7 @@
       saveAdminBookings(list);if(updated)logActivity("booking_status","Статус заявки изменён",`${updated.id} · ${updated.room} · ${statusLabel(effectiveBookingStatus(updated))}`,after);hydrate();
       if(updated&&status!=="pending")notifyUserBooking(updated,status);
       if(after==="partner")renderPartnerCabinet(true);
-      else if(after==="profile")renderProfile();
+      else if(after==="profile"){profileBookingFilter=updated?profileBookingGroup(updated):"active";renderProfile(true)}
       else renderAdminDashboard(true);
       toast(`Статус заявки: ${statusLabel(status)}.`);
     }
@@ -1655,7 +1674,7 @@
       saveAdminBookings(list);logActivity("booking_cancel","Бронь отменена",`${updated?.id||id} · ${cancelActorLabel(actor)} · ${reason}`,actor);hydrate();
       if(updated&&actor!=="client")notifyUserBooking(updated,"cancelled");
       if(after==="partner")renderPartnerCabinet(true);
-      else if(after==="profile")renderProfile();
+      else if(after==="profile"){profileBookingFilter="cancelled";renderProfile(true)}
       else renderAdminDashboard(true);
       toast(wasPaid?"Бронь отменена. Нужен разбор возврата предоплаты.":"Заявка отменена.");
     }
@@ -1820,6 +1839,7 @@
       const room=e.target.closest("[data-open-room]");if(room){renderSpace(room.dataset.openRoom);return}
       const book=e.target.closest("[data-book]");if(book){renderBooking(book.dataset.book);return}
       const fav=e.target.closest("[data-fav]");if(fav){const fromFavorites=!!fav.closest("[data-favorites-view]"),set=favorites();set.has(fav.dataset.fav)?set.delete(fav.dataset.fav):set.add(fav.dataset.fav);write(store.favorites,[...set]);renderCatalog();if(fromFavorites)renderFavorites();return}
+      const profileFilter=e.target.closest("[data-profile-booking-filter]");if(profileFilter){profileBookingFilter=profileFilter.dataset.profileBookingFilter;renderProfile(true);return}
       const card=e.target.closest("[data-open-venue]");if(card&&!e.target.closest("button,a,input,select,textarea,label")){renderSpace(card.dataset.openVenue);return}
       if(e.target.closest("[data-auth='login']"))renderAuth("login");
       if(e.target.closest("[data-auth='register']"))renderAuth("register");

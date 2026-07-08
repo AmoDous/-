@@ -767,7 +767,7 @@
       {room:"terrace-hall",name:"Екатерина",rating:5,date:"июнь 2026",text:"Светлый зал, красиво смотрится на фото. Для семейного банкета оказалось удобно по посадке и по общению с площадкой."}
     ];
     const E={cityButton:$("cityButton"),heroCityLabel:$("heroCityLabel"),noticeButton:$("noticeButton"),noticeBadge:$("noticeBadge"),accountButton:$("accountButton"),searchForm:$("searchForm"),searchCity:$("searchCity"),spaceType:$("spaceType"),date:$("date"),dateDisplay:$("dateDisplay"),time:$("time"),hours:$("hours"),guests:$("guests"),age:$("ageMode"),chips:$("chips"),advancedToggle:$("advancedToggle"),advancedRow:$("advancedRow"),results:$("results"),empty:$("empty"),count:$("countText"),intro:$("resultIntro"),sort:$("sortMode"),showAll:$("showAll"),resetButton:$("resetButton"),scenarioGrid:$("scenarioGrid"),partnerForm:$("partnerForm"),partnerStatus:$("partnerStatus"),partnerEntry:$("partnerEntry"),modal:$("modal"),modalBox:$("modalBox"),modalContent:$("modalContent"),modalClose:$("modalClose"),toast:$("toast"),partnerAlert:$("partnerAlert")};
-    let state={city:"Воронеж",type:"any",date:today,time:"12:00",hours:3,guests:8,age:"any",features:[]},last=[],profileBookingFilter="active",partnerBookingFilter="new";
+    let state={city:"Воронеж",type:"any",date:today,time:"12:00",hours:3,guests:8,age:"any",features:[]},last=[],profileBookingFilter="active",partnerBookingFilter="new",adminBookingFilter="new";
 
     function esc(s){return String(s??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]))}
     function read(k,f){try{return JSON.parse(localStorage.getItem(k))??f}catch{return f}}
@@ -1502,8 +1502,12 @@
       if(focusBookings)requestAnimationFrame(()=>document.querySelector("[data-profile-bookings]")?.scrollIntoView({behavior:"smooth",block:"start"}));
     }
     function renderAdminDashboard(keep=false){
-      const top=E.modalBox.scrollTop,books=adminBookings(),leads=adminLeads(),reviews=[...seedReviews,...customReviews()],pending=books.filter(b=>effectiveBookingStatus(b)==="pending").length,confirmed=books.filter(b=>["awaiting_payment","paid"].includes(effectiveBookingStatus(b))).length,visitCount=books.filter(b=>["visited","completed"].includes(effectiveBookingStatus(b))).length;
-      const bookingRows=books.map(b=>bookingCard(b,"admin")).join("");
+      const top=E.modalBox.scrollTop,books=adminBookings(),leads=adminLeads(),reviews=[...seedReviews,...customReviews()],adminCounts={new:0,payment:0,booked:0,history:0};
+      books.forEach(b=>adminCounts[partnerBookingGroup(b)]++);
+      const pending=adminCounts.new,confirmed=adminCounts.payment+adminCounts.booked,visitCount=books.filter(b=>["visited","completed"].includes(effectiveBookingStatus(b))).length;
+      const filteredBooks=adminBookingFilter==="all"?books:books.filter(b=>partnerBookingGroup(b)===adminBookingFilter),bookingRows=filteredBooks.map(b=>bookingCard(b,"admin")).join("");
+      const adminFilters=[["new","Новые",adminCounts.new],["payment","Ждут оплату",adminCounts.payment],["booked","Оплачены",adminCounts.booked],["history","История",adminCounts.history],["all","Все",books.length]].map(([id,label,count])=>`<button class="booking-filter ${adminBookingFilter===id?"active":""}" data-admin-booking-filter="${id}" type="button">${label} · ${count}</button>`).join("");
+      const adminEmpty=books.length?`В разделе «${({new:"Новые",payment:"Ждут оплату",booked:"Оплачены",history:"История"})[adminBookingFilter]||"Все"}» заявок пока нет.`:"Заявок пока нет.";
       const leadRows=leads.map(l=>`<article class="admin-item"><div class="admin-item-head"><div><h4>${esc(l.venue)}</h4><p class="muted" style="margin:0">${esc(l.city)} · ${esc(l.address||"адрес уточняется")} · ${esc(l.name||"контакт")} · ${esc(l.phone||"")} ${l.email?`· ${esc(l.email)}`:""}</p></div><span class="status review">${leadStatusLabel(l.status)}</span></div><div class="admin-meta"><span class="tag">${esc(l.type||"тип не указан")}</span><span class="tag">${Number(l.rooms)||1} помещений</span></div><p class="muted" style="margin:9px 0 0">${esc(l.comment||"Комментарий не заполнен")}</p><div class="admin-actions"><button class="btn primary" data-admin-lead="${l.id}|review" type="button">В модерацию</button><button class="btn" data-admin-lead="${l.id}|approved" type="button">Одобрить</button><button class="btn" data-admin-lead="${l.id}|rejected" type="button">Отклонить</button></div></article>`).join("");
       const roomRows=venues.filter(v=>v.city===state.city||v.city==="Воронеж").map(v=>{
         const pub=v.publicationStatus||"published",cabinet=v.cabinetStatus||"active";
@@ -1514,7 +1518,7 @@
         <div class="dash-grid"><div class="dash-card"><span class="muted">Новые заявки</span><strong>${pending}</strong></div><div class="dash-card"><span class="muted">К оплате / оплачены</span><strong>${confirmed}</strong></div><div class="dash-card"><span class="muted">Посещения</span><strong>${visitCount}</strong></div><div class="dash-card"><span class="muted">Партнёры</span><strong>${leads.length}</strong></div></div>
         <div class="chips"><button class="btn soft" data-export="admin" type="button">Экспорт заявок CSV</button></div>
         <div class="admin-grid">
-          <section class="admin-panel"><h3>Заявки на бронь</h3><div class="admin-list">${bookingRows||`<div class="empty" style="display:block">Заявок пока нет.</div>`}</div></section>
+          <section class="admin-panel"><h3>Заявки на бронь</h3><div class="booking-filters">${adminFilters}</div><div class="admin-list">${bookingRows||`<div class="empty" style="display:block">${adminEmpty}</div>`}</div></section>
           <aside class="admin-panel"><h3>Площадки на подключение</h3><div class="admin-list">${leadRows}</div></aside>
         </div>
         <div class="admin-grid">
@@ -1736,7 +1740,7 @@
       if(updated&&status!=="pending")notifyUserBooking(updated,status);
       if(after==="partner"){partnerBookingFilter=updated?partnerBookingGroup(updated):"new";renderPartnerCabinet(true)}
       else if(after==="profile"){profileBookingFilter=updated?profileBookingGroup(updated):"active";renderProfile(true)}
-      else renderAdminDashboard(true);
+      else{adminBookingFilter=updated?partnerBookingGroup(updated):"new";renderAdminDashboard(true)}
       toast(`Статус заявки: ${statusLabel(status)}.`);
     }
     function submitProposal(form){
@@ -1750,7 +1754,7 @@
       list=list.map(x=>x.id===id?{...x,status:"proposed",proposal,paymentStatus:"",paymentDueAt:""}:x);
       const updated=list.find(x=>x.id===id);
       saveAdminBookings(list);logActivity("booking_proposal","Площадка предложила другое время",`${updated.id} · ${proposal.date} ${proposal.time} · ${proposal.hours} ч`,after);hydrate();notifyUserBooking(updated,"proposed");
-      if(after==="partner"){partnerBookingFilter=updated?partnerBookingGroup(updated):"new";renderPartnerCabinet(true)}else renderAdminDashboard(true);
+      if(after==="partner"){partnerBookingFilter=updated?partnerBookingGroup(updated):"new";renderPartnerCabinet(true)}else{adminBookingFilter=updated?partnerBookingGroup(updated):"new";renderAdminDashboard(true)}
       toast("Предложение отправлено клиенту.");
     }
     function acceptProposal(id){
@@ -1783,7 +1787,7 @@
       if(updated&&actor!=="client")notifyUserBooking(updated,"cancelled");
       if(after==="partner"){partnerBookingFilter="history";renderPartnerCabinet(true)}
       else if(after==="profile"){profileBookingFilter="cancelled";renderProfile(true)}
-      else renderAdminDashboard(true);
+      else{adminBookingFilter="history";renderAdminDashboard(true)}
       toast(wasPaid?"Бронь отменена. Нужен разбор возврата предоплаты.":"Заявка отменена.");
     }
     function updateLeadStatus(payload){
@@ -1949,6 +1953,7 @@
       const declineProposalButton=e.target.closest("[data-decline-proposal]");if(declineProposalButton){declineProposal(declineProposalButton.dataset.declineProposal);return}
       const payBookingButton=e.target.closest("[data-pay-booking]");if(payBookingButton){payBooking(payBookingButton.dataset.payBooking);return}
       const adminBooking=e.target.closest("[data-admin-booking]");if(adminBooking){updateBookingStatus(adminBooking.dataset.adminBooking);return}
+      const adminFilter=e.target.closest("[data-admin-booking-filter]");if(adminFilter){adminBookingFilter=adminFilter.dataset.adminBookingFilter;renderAdminDashboard(true);return}
       const adminLead=e.target.closest("[data-admin-lead]");if(adminLead){updateLeadStatus(adminLead.dataset.adminLead);return}
       const adminVenue=e.target.closest("[data-admin-venue]");if(adminVenue){updateVenueAdmin(adminVenue.dataset.adminVenue);return}
       const win=e.target.closest("[data-window]");if(win){const [id,t]=win.dataset.window.split("|");state.time=t;E.time.value=t;renderSpace(id,true);return}

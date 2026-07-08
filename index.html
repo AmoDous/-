@@ -400,6 +400,24 @@
     .availability-slot.booked span{color:#954d3a}
     .availability-slot:disabled{cursor:not-allowed}
     .availability-slot:hover{box-shadow:var(--soft);transform:translateY(-1px)}
+    .week-board{margin-top:14px;border-top:1px solid var(--line);padding-top:14px}
+    .week-toolbar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
+    .week-toolbar strong{font-size:15px}
+    .week-nav{display:flex;gap:7px}
+    .week-nav .btn{min-height:36px;padding:0 10px}
+    .week-days{display:grid;grid-template-columns:repeat(7,minmax(104px,1fr));gap:8px}
+    .week-day{
+      min-width:0;border:1px solid var(--line);border-radius:14px;background:#fff;color:var(--ink);
+      padding:10px;text-align:left;transition:.18s ease;
+    }
+    .week-day:hover,.week-day.active{border-color:#d9a293;background:var(--paper-2);transform:translateY(-1px)}
+    .week-day>span{display:block;color:var(--muted);font-size:11px;font-weight:850;text-transform:capitalize}
+    .week-day>strong{display:block;margin-top:3px;font-size:15px}
+    .week-day>small{display:block;margin-top:7px;color:var(--muted);font-size:10px;line-height:1.35}
+    .week-bar{height:5px;display:flex;overflow:hidden;margin-top:8px;border-radius:99px;background:#edf1ec}
+    .week-bar i{display:block;height:100%}
+    .week-bar .booked{background:#c9826f}
+    .week-bar .manual{background:#e7b7a9}
     .admin-dashboard{display:grid;gap:16px}
     .admin-title{max-width:860px}
     .admin-title h2{margin:4px 0 8px;font-size:34px;line-height:1.08;letter-spacing:-.03em}
@@ -504,6 +522,8 @@
       .search-main,.advanced-grid,.cards,.form,.profile-grid,.dash-grid{grid-template-columns:1fr}
       .venue-card,.venue-card:nth-child(n){grid-column:auto}
       .partner-room-list,.availability-grid{grid-template-columns:1fr 1fr}
+      .week-days{grid-template-columns:repeat(7,112px);overflow-x:auto;padding-bottom:5px;scrollbar-width:none}
+      .week-days::-webkit-scrollbar{display:none}
       .photo-grid{grid-template-columns:1fr 1fr}
       .scenarios{grid-template-columns:1fr 1fr}
       .scenario{min-height:214px;border-radius:18px}
@@ -757,6 +777,12 @@
       const [y,m,d]=String(value||"").split("-").map(Number);
       return y&&m&&d?new Intl.DateTimeFormat("ru-RU").format(new Date(y,m-1,d)):"Выберите дату";
     }
+    function shiftDate(value,offset){
+      const d=new Date(`${value}T12:00:00`);d.setDate(d.getDate()+Number(offset||0));
+      return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+    }
+    function weekdayLabel(value){return new Intl.DateTimeFormat("ru-RU",{weekday:"short"}).format(new Date(`${value}T12:00:00`)).replace(".","")}
+    function shortDateLabel(value){return new Intl.DateTimeFormat("ru-RU",{day:"numeric",month:"short"}).format(new Date(`${value}T12:00:00`)).replace(".","")}
     function syncDateDisplay(){if(E.dateDisplay)E.dateDisplay.textContent=dateLabel(E.date.value)}
     function hour(t){return Number(String(t).slice(0,2))}
     function hourLabel(h){return `${String(((Number(h)%24)+24)%24).padStart(2,"0")}:00`}
@@ -849,6 +875,11 @@
       const legacy=Object.values(data.busy||{}).reduce((s,a)=>s+(Array.isArray(a)?a.length:0),0);
       const manual=Object.entries(data.manualBusy||{}).reduce((s,[,items])=>s+(Array.isArray(items)?items.reduce((n,x)=>n+Math.max(0,Number(x.end)-Number(x.start)),0):0),0);
       return legacy+manual;
+    }
+    function partnerDaySummary(r,date){
+      const slots=Array.from({length:r.work[1]-r.work[0]},(_,i)=>r.work[0]+i),bookedSet=new Set(blockHours(bufferedBlocks(r,bookingBusyBlocks(r,date)))),manualSet=new Set(blockHours(bufferedBlocks(r,partnerBusyBlocks(r,date))));
+      const booked=slots.filter(h=>bookedSet.has(h)).length,manual=slots.filter(h=>manualSet.has(h)&&!bookedSet.has(h)).length;
+      return {total:slots.length,booked,manual,free:Math.max(0,slots.length-booked-manual)};
     }
     function applyPartnerData(){
       const data=partnerData(),v=venues.find(x=>x.id===data.venue.id),num=(value,fallback)=>{const n=Number(value);return Number.isFinite(n)&&n>0?n:fallback};
@@ -1498,6 +1529,8 @@
       if((data.venue.cabinetStatus||"active")==="paused")return renderPartnerPaused();
       const busy=live?blockHours(bufferedBlocks(live,partnerBusyBlocks(live,date))):partnerBusyHours(selected,date,data);
       const slots=Array.from({length:(live?.work[1]||24)-(live?.work[0]||10)},(_,i)=>(live?.work[0]||10)+i),booked=live?blockHours(bufferedBlocks(live,bookingBusyBlocks(live,date))):[],busyTotal=partnerBusyHoursTotal(data),bookedTotal=booked.length,books=partnerBookings(ids),bookingRows=books.map(b=>bookingCard(b,"partner")).join(""),venuePublished=(data.venue.publicationStatus||"published")==="published",publishedIds=venuePublished?ids.filter(id=>(data.rooms[id].status||"published")==="published"):[],rating=(ids.reduce((s,id)=>s+(rooms.find(r=>r.id===id)?.rating||0),0)/Math.max(1,ids.length)).toFixed(1);
+      const weekStart=state.partnerWeekStart||date,weekDates=Array.from({length:7},(_,i)=>shiftDate(weekStart,i));
+      const weekCards=live?weekDates.map(d=>{const x=partnerDaySummary(live,d),bookedWidth=x.total?x.booked/x.total*100:0,manualWidth=x.total?x.manual/x.total*100:0;return `<button class="week-day ${d===date?"active":""}" data-partner-day="${d}" type="button"><span>${weekdayLabel(d)}</span><strong>${shortDateLabel(d)}</strong><div class="week-bar"><i class="booked" style="width:${bookedWidth}%"></i><i class="manual" style="width:${manualWidth}%"></i></div><small>${x.free} свободно · ${x.booked} заявки · ${x.manual} вручную</small></button>`}).join(""):"";
       openModal(`<div class="partner-cabinet">
         <div class="partner-title"><span class="kicker">Кабинет партнёра</span><h2>${esc(data.venue.title)}</h2><p class="muted">Здесь площадка редактирует информацию о заведении, помещениях внутри него и отмечает занятость. Занятые часы сразу пропадают из свободных окон для клиента.</p></div>
         <div class="dash-grid"><div class="dash-card"><span class="muted">Заявки</span><strong>${books.length}</strong></div><div class="dash-card"><span class="muted">В каталоге</span><strong>${publishedIds.length}</strong></div><div class="dash-card"><span class="muted">Занято вручную</span><strong>${busyTotal}</strong></div><div class="dash-card"><span class="muted">Занято заявками</span><strong>${bookedTotal}</strong></div></div>
@@ -1530,6 +1563,7 @@
         </div>
         <div class="partner-editor">
           <div class="availability-head"><div><h3>Занятость по часам</h3><p class="muted">Белый слот свободен, тёплый закрыт вручную, коралловый занят оплаченной или ожидающей предоплату заявкой. Ручная занятость теперь хранится интервалами с типом и комментарием.</p></div><div class="form" style="grid-template-columns:1fr"><div class="field"><label>Помещение</label><select data-partner-busy-room>${ids.map(id=>`<option value="${id}" ${id===selected?"selected":""}>${esc(data.rooms[id].title)}</option>`).join("")}</select></div><div class="field"><label>Дата</label><input data-partner-busy-date type="date" min="${today}" value="${date}"></div><div class="partner-actions"><button class="btn soft" data-day-busy="${selected}|${date}|close" type="button">Закрыть день</button><button class="btn" data-day-busy="${selected}|${date}|open" type="button">Открыть ручное</button></div></div></div>
+          <div class="week-board"><div class="week-toolbar"><strong>Обзор на 7 дней</strong><div class="week-nav"><button class="btn" data-partner-week="-7" type="button" ${weekStart<=today?"disabled":""}>Назад</button><button class="btn" data-partner-week="7" type="button">Вперёд</button></div></div><div class="week-days">${weekCards}</div></div>
           <form id="partnerBusyCreate" class="profile-block" style="margin-top:12px">
             <input type="hidden" name="room" value="${selected}"><input type="hidden" name="date" value="${date}">
             <div class="form"><div class="field"><label>Тип занятости</label><select name="type">${busyTypeSelect("manual")}</select></div><div class="field"><label>Начало</label><select name="start">${hourOptionList(live?.work[0]||10,live?.work[0]||10,(live?.work[1]||24)-1)}</select></div><div class="field"><label>Конец</label><select name="end">${hourOptionList(Math.min((live?.work[0]||10)+1,live?.work[1]||24),Math.min((live?.work[0]||10)+1,live?.work[1]||24),live?.work[1]||24)}</select></div><div class="field full"><label>Комментарий</label><input name="comment" placeholder="Например: клиент из WhatsApp, уборка, закрыто на праздник"></div></div>
@@ -1878,13 +1912,15 @@
     E.modal.addEventListener("click",e=>{if(e.target===E.modal)closeModal()});
     E.partnerForm.addEventListener("submit",e=>{e.preventDefault();const lead={id:`P-${Date.now().toString().slice(-6)}`,city:$("partnerCity").value,venue:$("partnerVenue").value,address:$("partnerAddress").value,name:$("partnerName").value,phone:$("partnerPhone").value,email:$("partnerEmail").value,type:$("partnerType").value,rooms:Number($("partnerRooms").value)||1,comment:$("partnerComment").value,status:"new",created:new Date().toISOString()};write(store.partner,[lead,...read(store.partner,[])]);logActivity("partner_lead","Новая заявка партнёра",`${lead.venue} · ${lead.city} · ${lead.rooms} помещений`);E.partnerStatus.textContent="Заявка отправлена";toast("Спасибо. Мы свяжемся с площадкой.");E.partnerForm.reset();$("partnerCity").value=state.city});
     document.addEventListener("submit",e=>{if(e.target.id==="bookingForm"){e.preventDefault();submitBooking(e.target)}if(e.target.id==="proposalForm"){e.preventDefault();submitProposal(e.target)}if(e.target.id==="cancelBookingForm"){e.preventDefault();submitCancelBooking(e.target)}if(e.target.id==="reviewForm"){e.preventDefault();submitReview(e.target)}if(e.target.id==="loginForm"){e.preventDefault();login(e.target)}if(e.target.id==="registerForm"){e.preventDefault();register(e.target)}if(e.target.id==="personalDataForm"){e.preventDefault();savePersonalData(e.target)}if(e.target.id==="partnerLoginForm"){e.preventDefault();partnerLogin(e.target)}if(e.target.id==="partnerVenueEdit"){e.preventDefault();savePartnerVenue(e.target)}if(e.target.id==="partnerRoomCreate"){e.preventDefault();createPartnerRoom(e.target)}if(e.target.id==="partnerRoomEdit"){e.preventDefault();savePartnerRoom(e.target)}if(e.target.id==="partnerBusyCreate"){e.preventDefault();createPartnerManualBusy(e.target)}});
-    document.addEventListener("change",e=>{if(e.target.matches("[data-proposal-date],[data-proposal-time],[data-proposal-hours]")){updateProposalForm(e.target.form);return}if(e.target.matches("[data-booking-date],[data-booking-time],[data-booking-hours]")){updateBookingForm(e.target.form);return}if(e.target.matches("[data-detail-date]")){state.date=e.target.value;E.date.value=state.date;renderSpace(e.target.dataset.detailDate,true)}if(e.target.matches("[data-detail-hours]")){state.hours=Number(e.target.value);E.hours.value=String(state.hours);renderSpace(e.target.dataset.detailHours,true)}if(e.target.matches("[data-partner-busy-room]")){state.partnerRoom=e.target.value;renderPartnerCabinet(true)}if(e.target.matches("[data-partner-busy-date]")){state.partnerDate=e.target.value;renderPartnerCabinet(true)}if(e.target.matches("[data-photo-upload]"))handlePhotoUpload(e.target)});
+    document.addEventListener("change",e=>{if(e.target.matches("[data-proposal-date],[data-proposal-time],[data-proposal-hours]")){updateProposalForm(e.target.form);return}if(e.target.matches("[data-booking-date],[data-booking-time],[data-booking-hours]")){updateBookingForm(e.target.form);return}if(e.target.matches("[data-detail-date]")){state.date=e.target.value;E.date.value=state.date;renderSpace(e.target.dataset.detailDate,true)}if(e.target.matches("[data-detail-hours]")){state.hours=Number(e.target.value);E.hours.value=String(state.hours);renderSpace(e.target.dataset.detailHours,true)}if(e.target.matches("[data-partner-busy-room]")){state.partnerRoom=e.target.value;renderPartnerCabinet(true)}if(e.target.matches("[data-partner-busy-date]")){state.partnerDate=e.target.value;state.partnerWeekStart=e.target.value;renderPartnerCabinet(true)}if(e.target.matches("[data-photo-upload]"))handlePhotoUpload(e.target)});
     document.addEventListener("click",e=>{
       const city=e.target.closest("[data-city-choice]");if(city){selectCity(city.dataset.cityChoice);closeModal();toast(`Город поиска: ${city.dataset.cityChoice}`);return}
       const scenario=e.target.closest("[data-scenario]");if(scenario){E.scenarioGrid.querySelectorAll(".scenario").forEach(b=>b.classList.toggle("active",b===scenario));E.spaceType.value=scenario.dataset.scenario;renderCatalog(scenario.dataset.scenario);document.getElementById("catalog").scrollIntoView({behavior:"smooth"});return}
       const galleryDir=e.target.closest("[data-gallery-dir]");if(galleryDir){moveGallery(galleryDir.closest("[data-gallery]"),Number(galleryDir.dataset.galleryDir));return}
       const galleryJump=e.target.closest("[data-gallery-jump]");if(galleryJump){jumpGallery(galleryJump);return}
       const partnerRoom=e.target.closest("[data-partner-room]");if(partnerRoom){state.partnerRoom=partnerRoom.dataset.partnerRoom;renderPartnerCabinet(true);return}
+      const partnerDay=e.target.closest("[data-partner-day]");if(partnerDay){state.partnerDate=partnerDay.dataset.partnerDay;renderPartnerCabinet(true);return}
+      const partnerWeek=e.target.closest("[data-partner-week]");if(partnerWeek){const start=state.partnerWeekStart||state.partnerDate||today,next=shiftDate(start,Number(partnerWeek.dataset.partnerWeek));state.partnerWeekStart=next<today?today:next;state.partnerDate=state.partnerWeekStart;renderPartnerCabinet(true);return}
       const busy=e.target.closest("[data-busy-toggle]");if(busy){togglePartnerBusy(busy.dataset.busyToggle);return}
       const dayBusy=e.target.closest("[data-day-busy]");if(dayBusy){setPartnerDayBusy(dayBusy.dataset.dayBusy);return}
       const busyDelete=e.target.closest("[data-busy-delete]");if(busyDelete){deletePartnerManualBusy(busyDelete.dataset.busyDelete);return}

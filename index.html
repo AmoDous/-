@@ -132,13 +132,15 @@
       border-radius:24px;background:rgba(255,255,255,.82);backdrop-filter:blur(20px);
       box-shadow:var(--shadow), inset 0 1px 0 rgba(255,255,255,.72);padding:12px;
     }
-    .search-main{display:grid;grid-template-columns:1.05fr .85fr .75fr .75fr 1fr auto;gap:8px;align-items:end}
+    .search-main{display:grid;grid-template-columns:1.05fr .85fr .75fr .75fr 1fr auto;gap:8px;align-items:end;min-width:0}
+    .search-main>*,.form>*,.field{min-width:0}
     .field{display:grid;gap:7px}
     label{color:var(--muted);font-size:12px;font-weight:850}
     input,select,textarea{
       width:100%;min-height:46px;border:1px solid #dec8bf;border-radius:12px;background:#fff;color:var(--ink);
       padding:0 13px;outline:none;
     }
+    input[type="date"]{display:block;min-width:0;max-width:100%}
     textarea{min-height:104px;padding:13px;resize:vertical}
     input:focus,select:focus,textarea:focus{border-color:var(--green-2);box-shadow:0 0 0 4px rgba(213,120,101,.16)}
     .advanced-row{display:none;margin-top:12px;padding-top:12px;border-top:1px solid var(--line)}
@@ -158,7 +160,8 @@
     .scenarios{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
     .scenario{
       min-height:236px;overflow:hidden;text-align:left;border:1px solid rgba(234,222,216,.82);border-radius:22px;background:rgba(255,255,255,.82);
-      padding:0;box-shadow:0 10px 26px rgba(78,42,31,.055);transition:transform .22s ease, box-shadow .22s ease, border-color .22s ease, background .22s ease;
+      padding:0;color:var(--ink);font:inherit;-webkit-appearance:none;appearance:none;
+      box-shadow:0 10px 26px rgba(78,42,31,.055);transition:transform .22s ease, box-shadow .22s ease, border-color .22s ease, background .22s ease;
     }
     .scenario:hover,.scenario.active{border-color:#e1b5a7;background:var(--mint);transform:translateY(-3px);box-shadow:0 18px 38px rgba(78,42,31,.1)}
     .scenario img{width:100%;height:126px;display:block;object-fit:cover;transition:.18s ease}
@@ -397,6 +400,11 @@
       display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;border-top:1px solid var(--line);padding-top:10px;
     }
     .admin-room-row:first-child{border-top:0;padding-top:0}
+    .venue-status-summary{
+      display:flex;flex-wrap:wrap;align-items:center;gap:8px;min-height:46px;
+      border:1px solid var(--line);border-radius:12px;background:var(--paper-2);padding:9px 11px;
+    }
+    .venue-status-summary small{width:100%;color:var(--muted);line-height:1.4}
     .toast{
       position:fixed;right:18px;bottom:18px;z-index:100;display:none;max-width:360px;border-radius:14px;
       background:var(--ink);color:#fff;padding:12px 14px;box-shadow:var(--shadow);font-size:13px;line-height:1.45;
@@ -446,6 +454,9 @@
       .scenario{min-height:214px;border-radius:18px}
       .scenario img{height:106px}
       .scenario-body{padding:12px}
+      .scenario strong{color:var(--ink)}
+      .search-dock{width:100%;min-width:0}
+      .admin-item-head{flex-wrap:wrap}
       .section h2{font-size:27px}
       .photo img{height:220px}
       .modal{padding:10px}
@@ -646,7 +657,7 @@
     const $=id=>document.getElementById(id);
     const cities=["Воронеж","Москва","Санкт-Петербург","Краснодар"];
     const times=[...Array.from({length:14},(_,i)=>`${String(i+10).padStart(2,"0")}:00`),"00:00","01:00","02:00","03:00","04:00","05:00"];
-    const store={accounts:"rooms_accounts_v30",session:"rooms_session_v30",bookings:"rooms_bookings_v30",favorites:"rooms_favorites_v30",reviews:"rooms_reviews_v30",partner:"rooms_partner_v30",partnerAuth:"rooms_partner_auth_v30",partnerData:"rooms_partner_data_v30",partnerNotice:"rooms_partner_notice_v30",userNotice:"rooms_user_notice_v30",activity:"rooms_activity_v30"};
+    const store={accounts:"rooms_accounts_v30",session:"rooms_session_v30",bookings:"rooms_bookings_v30",favorites:"rooms_favorites_v30",reviews:"rooms_reviews_v30",partner:"rooms_partner_v30",partnerAuth:"rooms_partner_auth_v30",partnerData:"rooms_partner_data_v30",venueAdmin:"rooms_venue_admin_v30",partnerNotice:"rooms_partner_notice_v30",userNotice:"rooms_user_notice_v30",activity:"rooms_activity_v30"};
     const adminAccess={login:"admin@rooms.ru",password:"rooms2026"};
     const day=n=>{const d=new Date();d.setHours(12,0,0,0);d.setDate(d.getDate()+n);return d.toISOString().slice(0,10)};
     const today=day(0);
@@ -709,8 +720,8 @@
     function roomStatusSelect(value="published"){return `<option value="published" ${value!=="hidden"?"selected":""}>Опубликовано в каталоге</option><option value="hidden" ${value==="hidden"?"selected":""}>Скрыто из каталога</option>`}
     function cabinetStatusLabel(status){return status==="paused"?"кабинет на паузе":"кабинет активен"}
     function publicationStatusLabel(status){return ({published:"площадка опубликована",hidden:"площадка скрыта",review:"на модерации"})[status||"published"]||"площадка опубликована"}
-    function cabinetStatusSelect(value="active"){return `<option value="active" ${value!=="paused"?"selected":""}>Кабинет активен</option><option value="paused" ${value==="paused"?"selected":""}>Кабинет на паузе</option>`}
-    function publicationStatusSelect(value="published"){return [["published","Опубликована на сайте"],["hidden","Скрыта с сайта"],["review","На модерации"]].map(([v,l])=>`<option value="${v}" ${v===(value||"published")?"selected":""}>${l}</option>`).join("")}
+    function publicationStatusClass(status){return status==="hidden"?"cancelled":status==="review"?"review":"paid"}
+    function cabinetStatusClass(status){return status==="paused"?"cancelled":"paid"}
     function workText(work=[10,24]){return intervalText(work[0],work[1])}
     function isVenuePublished(v){return (v?.publicationStatus||"published")==="published"}
     function isRoomPublic(r){return (r.status||"published")==="published"&&isVenuePublished(venue(r))}
@@ -747,6 +758,13 @@
       return {...base,...saved,venue:{...base.venue,...(saved.venue||{})},rooms:mergedRooms,busy:{...base.busy,...(saved.busy||{})},manualBusy:{...base.manualBusy,...(saved.manualBusy||{})}};
     }
     function savePartnerData(data){write(store.partnerData,data)}
+    function venueAdminState(){return read(store.venueAdmin,{})||{}}
+    function applyVenueAdminState(){
+      Object.entries(venueAdminState()).forEach(([id,patch])=>{
+        const v=venues.find(x=>x.id===id);
+        if(v)Object.assign(v,patch);
+      });
+    }
     function partnerRoomIds(data=partnerData()){return Object.keys(data.rooms||{}).filter(id=>data.rooms[id])}
     function busyKey(id,date){return `${id}|${date}`}
     function busyTypeLabel(type){return ({manual:"ручная бронь",tech:"техническая занятость",service:"обслуживание",private:"личная бронь"})[type]||"ручная бронь"}
@@ -1309,7 +1327,10 @@
       const top=E.modalBox.scrollTop,books=adminBookings(),leads=adminLeads(),reviews=[...seedReviews,...customReviews()],pending=books.filter(b=>effectiveBookingStatus(b)==="pending").length,confirmed=books.filter(b=>["awaiting_payment","paid"].includes(effectiveBookingStatus(b))).length,visitCount=books.filter(b=>["visited","completed"].includes(effectiveBookingStatus(b))).length;
       const bookingRows=books.map(b=>bookingCard(b,"admin")).join("");
       const leadRows=leads.map(l=>`<article class="admin-item"><div class="admin-item-head"><div><h4>${esc(l.venue)}</h4><p class="muted" style="margin:0">${esc(l.city)} · ${esc(l.address||"адрес уточняется")} · ${esc(l.name||"контакт")} · ${esc(l.phone||"")} ${l.email?`· ${esc(l.email)}`:""}</p></div><span class="status review">${leadStatusLabel(l.status)}</span></div><div class="admin-meta"><span class="tag">${esc(l.type||"тип не указан")}</span><span class="tag">${Number(l.rooms)||1} помещений</span></div><p class="muted" style="margin:9px 0 0">${esc(l.comment||"Комментарий не заполнен")}</p><div class="admin-actions"><button class="btn primary" data-admin-lead="${l.id}|review" type="button">В модерацию</button><button class="btn" data-admin-lead="${l.id}|approved" type="button">Одобрить</button><button class="btn" data-admin-lead="${l.id}|rejected" type="button">Отклонить</button></div></article>`).join("");
-      const roomRows=venues.filter(v=>v.city===state.city||v.city==="Воронеж").map(v=>{const pub=v.publicationStatus||"published",pubClass=pub==="hidden"?"cancelled":pub==="review"?"review":"confirmed";return `<div class="admin-room-row"><div><strong>${esc(v.title)}</strong><div class="muted">${esc(v.address)} · ${cabinetStatusLabel(v.cabinetStatus)} · ${rooms.filter(r=>r.venue===v.id).map(r=>r.title).join(", ")||"комнаты не добавлены"}</div></div><span class="status ${pubClass}">${publicationStatusLabel(pub)}</span></div>`}).join("");
+      const roomRows=venues.filter(v=>v.city===state.city||v.city==="Воронеж").map(v=>{
+        const pub=v.publicationStatus||"published",cabinet=v.cabinetStatus||"active";
+        return `<article class="admin-item"><div class="admin-item-head"><div><h4>${esc(v.title)}</h4><p class="muted" style="margin:0">${esc(v.address)} · ${rooms.filter(r=>r.venue===v.id).map(r=>r.title).join(", ")||"комнаты не добавлены"}</p></div><div class="admin-meta" style="margin:0"><span class="status ${publicationStatusClass(pub)}">${publicationStatusLabel(pub)}</span><span class="status ${cabinetStatusClass(cabinet)}">${cabinetStatusLabel(cabinet)}</span></div></div><div class="admin-actions"><button class="btn ${pub==="published"?"soft":""}" data-admin-venue="${v.id}|publicationStatus|published" type="button">Опубликовать</button><button class="btn ${pub==="review"?"soft":""}" data-admin-venue="${v.id}|publicationStatus|review" type="button">На модерацию</button><button class="btn ${pub==="hidden"?"soft":""}" data-admin-venue="${v.id}|publicationStatus|hidden" type="button">Скрыть</button><button class="btn ${cabinet==="active"?"soft":""}" data-admin-venue="${v.id}|cabinetStatus|active" type="button">Открыть кабинет</button><button class="btn ${cabinet==="paused"?"soft":""}" data-admin-venue="${v.id}|cabinetStatus|paused" type="button">Поставить на паузу</button></div></article>`;
+      }).join("");
       openModal(`<div class="admin-dashboard">
         <div class="admin-title"><span class="kicker">Админка Rooms</span><h2>Операционный центр</h2><p class="muted">Служебный кабинет для заявок, партнёров, помещений и отзывов. Это v1 на локальных данных, но уже с рабочими статусами.</p></div>
         <div class="dash-grid"><div class="dash-card"><span class="muted">Новые заявки</span><strong>${pending}</strong></div><div class="dash-card"><span class="muted">К оплате / оплачены</span><strong>${confirmed}</strong></div><div class="dash-card"><span class="muted">Посещения</span><strong>${visitCount}</strong></div><div class="dash-card"><span class="muted">Партнёры</span><strong>${leads.length}</strong></div></div>
@@ -1331,8 +1352,13 @@
       if(keep)requestAnimationFrame(()=>E.modalBox.scrollTop=top);
     }
     function renderPartnerLogin(){openModal(`<span class="kicker">Вход для партнёров</span><h2 style="margin:0">Кабинет площадки</h2><form id="partnerLoginForm"><div class="form"><div class="field full"><label>Email или телефон</label><input name="login" placeholder="manager@venue.ru или +7..." required></div><div class="field full"><label>Пароль</label><input name="password" type="password" placeholder="Для демо введите любые 4 символа" required></div></div><div class="chips" style="margin-top:14px"><button class="btn primary" type="submit">Войти</button><a class="btn" href="#partner" data-close-modal>Добавить заведение</a></div></form>`,true)}
+    function renderPartnerPaused(){
+      const data=partnerData();
+      openModal(`<span class="kicker">Кабинет партнёра</span><h2 style="margin:0">Доступ временно приостановлен</h2><p class="muted">Площадка «${esc(data.venue.title)}» сохранена, но редактирование и работа с заявками временно недоступны. Свяжитесь с Rooms, чтобы уточнить статус кабинета.</p><div class="chips"><button class="btn" data-partner-logout type="button">Выйти</button><a class="btn soft" href="#partner" data-close-modal>Связаться с Rooms</a></div>`,true);
+    }
     function renderPartnerCabinet(keep=false){
       const top=E.modalBox.scrollTop,data=partnerData(),ids=partnerRoomIds(data),selected=ids.includes(state.partnerRoom)?state.partnerRoom:ids[0],date=state.partnerDate||state.date||today,room=data.rooms[selected],live=rooms.find(r=>r.id===selected),manualItems=partnerManualItems(selected,date,data);
+      if((data.venue.cabinetStatus||"active")==="paused")return renderPartnerPaused();
       const busy=live?blockHours(bufferedBlocks(live,partnerBusyBlocks(live,date))):partnerBusyHours(selected,date,data);
       const slots=Array.from({length:(live?.work[1]||24)-(live?.work[0]||10)},(_,i)=>(live?.work[0]||10)+i),booked=live?blockHours(bufferedBlocks(live,bookingBusyBlocks(live,date))):[],busyTotal=partnerBusyHoursTotal(data),bookedTotal=booked.length,books=partnerBookings(ids),bookingRows=books.map(b=>bookingCard(b,"partner")).join(""),venuePublished=(data.venue.publicationStatus||"published")==="published",publishedIds=venuePublished?ids.filter(id=>(data.rooms[id].status||"published")==="published"):[],rating=(ids.reduce((s,id)=>s+(rooms.find(r=>r.id===id)?.rating||0),0)/Math.max(1,ids.length)).toFixed(1);
       openModal(`<div class="partner-cabinet">
@@ -1343,7 +1369,7 @@
         <div class="partner-shell">
           <form class="partner-editor" id="partnerVenueEdit">
             <h3>Заведение</h3>
-            <div class="form"><div class="field"><label>Город</label><select name="city">${cities.map(c=>`<option ${c===data.venue.city?"selected":""}>${c}</option>`).join("")}</select></div><div class="field"><label>Название</label><input name="title" value="${esc(data.venue.title)}" required></div><div class="field full"><label>Адрес</label><input name="address" value="${esc(data.venue.address)}" required></div><div class="field"><label>Тип площадки</label><input name="type" value="${esc(data.venue.type||"")}" placeholder="Лофт, детская комната, караоке"></div><div class="field"><label>Помещений внутри</label><input name="roomCount" type="number" min="1" value="${Number(data.venue.roomCount)||ids.length||1}"></div><div class="field"><label>Доступ к кабинету</label><select name="cabinetStatus">${cabinetStatusSelect(data.venue.cabinetStatus||"active")}</select></div><div class="field"><label>Публикация на сайте</label><select name="publicationStatus">${publicationStatusSelect(data.venue.publicationStatus||"published")}</select></div><div class="field"><label>Контактное лицо</label><input name="contact" value="${esc(data.venue.contact||"")}" required></div><div class="field"><label>Телефон</label><input name="phone" type="tel" value="${esc(data.venue.phone||"")}" required></div><div class="field"><label>Email партнёра</label><input name="email" type="email" value="${esc(data.venue.email||"")}" placeholder="manager@venue.ru"></div><div class="field"><label>Начало работы</label><select name="venueWorkStart">${hourOptionList((data.venue.work||[10,24])[0],0,23)}</select></div><div class="field"><label>Конец работы</label><select name="venueWorkEnd">${hourOptionList((data.venue.work||[10,24])[1],1,30)}</select></div><div class="field full"><label>Описание для клиента</label><textarea name="about" required>${esc(data.venue.about)}</textarea></div><div class="field full"><label>Общие правила площадки</label><textarea name="rules" placeholder="Например: ограничения по шуму, еде, алкоголю, депозиту">${esc(data.venue.rules||"")}</textarea></div></div>
+            <div class="form"><div class="field"><label>Город</label><select name="city">${cities.map(c=>`<option ${c===data.venue.city?"selected":""}>${c}</option>`).join("")}</select></div><div class="field"><label>Название</label><input name="title" value="${esc(data.venue.title)}" required></div><div class="field full"><label>Адрес</label><input name="address" value="${esc(data.venue.address)}" required></div><div class="field"><label>Тип площадки</label><input name="type" value="${esc(data.venue.type||"")}" placeholder="Лофт, детская комната, караоке"></div><div class="field"><label>Помещений внутри</label><input name="roomCount" type="number" min="1" value="${Number(data.venue.roomCount)||ids.length||1}"></div><div class="field full"><label>Статус в Rooms</label><div class="venue-status-summary"><span class="status ${publicationStatusClass(data.venue.publicationStatus)}">${publicationStatusLabel(data.venue.publicationStatus)}</span><span class="status ${cabinetStatusClass(data.venue.cabinetStatus)}">${cabinetStatusLabel(data.venue.cabinetStatus)}</span><small>Публикацией и доступом управляет Rooms после проверки данных площадки.</small></div></div><div class="field"><label>Контактное лицо</label><input name="contact" value="${esc(data.venue.contact||"")}" required></div><div class="field"><label>Телефон</label><input name="phone" type="tel" value="${esc(data.venue.phone||"")}" required></div><div class="field"><label>Email партнёра</label><input name="email" type="email" value="${esc(data.venue.email||"")}" placeholder="manager@venue.ru"></div><div class="field"><label>Начало работы</label><select name="venueWorkStart">${hourOptionList((data.venue.work||[10,24])[0],0,23)}</select></div><div class="field"><label>Конец работы</label><select name="venueWorkEnd">${hourOptionList((data.venue.work||[10,24])[1],1,30)}</select></div><div class="field full"><label>Описание для клиента</label><textarea name="about" required>${esc(data.venue.about)}</textarea></div><div class="field full"><label>Общие правила площадки</label><textarea name="rules" placeholder="Например: ограничения по шуму, еде, алкоголю, депозиту">${esc(data.venue.rules||"")}</textarea></div></div>
             ${photoManager({type:"venue",images:[data.venue.image]})}
             <div class="partner-actions"><button class="btn primary" type="submit">Сохранить заведение</button></div>
           </form>
@@ -1382,6 +1408,7 @@
     }
     function partnerLogin(form){
       if(!form.login.value.trim()||form.password.value.length<4)return toast("Введите логин и пароль от 4 символов.");
+      if((partnerData().venue.cabinetStatus||"active")==="paused")return renderPartnerPaused();
       write(store.partnerAuth,{login:form.login.value.trim()});
       renderPartnerCabinet();
       const pendingNotice=partnerNotice().unread?latestPartnerNoticeBooking():null;
@@ -1393,7 +1420,7 @@
       const data=partnerData(),fd=new FormData(form);
       const work=[Number(fd.get("venueWorkStart"))||10,Number(fd.get("venueWorkEnd"))||24];
       if(work[1]<=work[0])return toast("Конец работы должен быть позже начала. Для закрытия после полуночи выберите 01:00 +1 день, 02:00 +1 день и т.д.");
-      data.venue={...data.venue,city:fd.get("city"),title:fd.get("title"),address:fd.get("address"),type:fd.get("type"),roomCount:Number(fd.get("roomCount"))||partnerRoomIds(data).length||1,cabinetStatus:fd.get("cabinetStatus")||"active",publicationStatus:fd.get("publicationStatus")||"published",contact:fd.get("contact"),phone:fd.get("phone"),email:fd.get("email"),work,rules:fd.get("rules"),about:fd.get("about")};
+      data.venue={...data.venue,city:fd.get("city"),title:fd.get("title"),address:fd.get("address"),type:fd.get("type"),roomCount:Number(fd.get("roomCount"))||partnerRoomIds(data).length||1,contact:fd.get("contact"),phone:fd.get("phone"),email:fd.get("email"),work,rules:fd.get("rules"),about:fd.get("about")};
       savePartnerData(data);logActivity("venue_update","Площадка обновила данные",`${data.venue.title} · ${data.venue.city}`,"partner");applyPartnerData();hydrate();renderPartnerCabinet(true);toast("Информация о заведении сохранена.");
     }
     function createPartnerRoom(form){
@@ -1579,6 +1606,23 @@
       list=list.map(l=>l.id===id?{...l,status}:l);
       const lead=list.find(l=>l.id===id);saveAdminLeads(list);logActivity("lead_status","Статус заявки площадки изменён",`${lead?.venue||id} · ${leadStatusLabel(status)}`,"admin");renderAdminDashboard(true);toast(`Статус площадки: ${leadStatusLabel(status)}.`);
     }
+    function updateVenueAdmin(payload){
+      const [id,field,value]=payload.split("|"),allowed=field==="publicationStatus"?["published","review","hidden"]:field==="cabinetStatus"?["active","paused"]:[];
+      const v=venues.find(x=>x.id===id);
+      if(!v||!allowed.includes(value))return toast("Не удалось изменить статус площадки.");
+      const stateMap=venueAdminState();
+      stateMap[id]={...(stateMap[id]||{}),[field]:value};
+      write(store.venueAdmin,stateMap);
+      const data=partnerData();
+      if(data.venue.id===id){
+        data.venue={...data.venue,[field]:value};
+        savePartnerData(data);
+      }
+      applyPartnerData();applyVenueAdminState();renderCatalog();
+      const label=field==="publicationStatus"?publicationStatusLabel(value):cabinetStatusLabel(value);
+      logActivity("venue_status","Rooms изменил статус площадки",`${v.title} · ${label}`,"admin");
+      renderAdminDashboard(true);toast(`Статус «${v.title}»: ${label}.`);
+    }
     function payBooking(id){
       let list=read(store.bookings,[]);
       const item=list.find(b=>b.id===id),acc=current();
@@ -1651,6 +1695,7 @@
     }
     function hydrate(){
       applyPartnerData();
+      applyVenueAdminState();
       E.time.innerHTML=times.map(t=>`<option ${t===state.time?"selected":""}>${t}</option>`).join("");
       E.date.min=today;E.date.value=state.date||today;E.searchCity.value=state.city;E.spaceType.value=state.type;E.hours.value=String(state.hours);E.guests.value=state.guests;E.age.value=state.age;
       E.accountButton.textContent=current()?(isAdmin()?"Админка":"Профиль"):"Войти";selectCity(state.city,false);syncAdult();renderCatalog();
@@ -1694,6 +1739,7 @@
       const payBookingButton=e.target.closest("[data-pay-booking]");if(payBookingButton){payBooking(payBookingButton.dataset.payBooking);return}
       const adminBooking=e.target.closest("[data-admin-booking]");if(adminBooking){updateBookingStatus(adminBooking.dataset.adminBooking);return}
       const adminLead=e.target.closest("[data-admin-lead]");if(adminLead){updateLeadStatus(adminLead.dataset.adminLead);return}
+      const adminVenue=e.target.closest("[data-admin-venue]");if(adminVenue){updateVenueAdmin(adminVenue.dataset.adminVenue);return}
       const win=e.target.closest("[data-window]");if(win){const [id,t]=win.dataset.window.split("|");state.time=t;E.time.value=t;renderSpace(id,true);return}
       const room=e.target.closest("[data-open-room]");if(room){renderSpace(room.dataset.openRoom);return}
       const book=e.target.closest("[data-book]");if(book){renderBooking(book.dataset.book);return}

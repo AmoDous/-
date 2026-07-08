@@ -767,7 +767,7 @@
       {room:"terrace-hall",name:"Екатерина",rating:5,date:"июнь 2026",text:"Светлый зал, красиво смотрится на фото. Для семейного банкета оказалось удобно по посадке и по общению с площадкой."}
     ];
     const E={cityButton:$("cityButton"),heroCityLabel:$("heroCityLabel"),noticeButton:$("noticeButton"),noticeBadge:$("noticeBadge"),accountButton:$("accountButton"),searchForm:$("searchForm"),searchCity:$("searchCity"),spaceType:$("spaceType"),date:$("date"),dateDisplay:$("dateDisplay"),time:$("time"),hours:$("hours"),guests:$("guests"),age:$("ageMode"),chips:$("chips"),advancedToggle:$("advancedToggle"),advancedRow:$("advancedRow"),results:$("results"),empty:$("empty"),count:$("countText"),intro:$("resultIntro"),sort:$("sortMode"),showAll:$("showAll"),resetButton:$("resetButton"),scenarioGrid:$("scenarioGrid"),partnerForm:$("partnerForm"),partnerStatus:$("partnerStatus"),partnerEntry:$("partnerEntry"),modal:$("modal"),modalBox:$("modalBox"),modalContent:$("modalContent"),modalClose:$("modalClose"),toast:$("toast"),partnerAlert:$("partnerAlert")};
-    let state={city:"Воронеж",type:"any",date:today,time:"12:00",hours:3,guests:8,age:"any",features:[]},last=[],profileBookingFilter="active";
+    let state={city:"Воронеж",type:"any",date:today,time:"12:00",hours:3,guests:8,age:"any",features:[]},last=[],profileBookingFilter="active",partnerBookingFilter="new";
 
     function esc(s){return String(s??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]))}
     function read(k,f){try{return JSON.parse(localStorage.getItem(k))??f}catch{return f}}
@@ -970,6 +970,13 @@
       if(["visited","completed"].includes(status))return "completed";
       if(["cancelled","expired"].includes(status))return "cancelled";
       return "active";
+    }
+    function partnerBookingGroup(b){
+      const status=effectiveBookingStatus(b);
+      if(["pending","proposed"].includes(status))return "new";
+      if(status==="awaiting_payment")return "payment";
+      if(status==="paid")return "booked";
+      return "history";
     }
     function isBlockingBooking(b){
       const status=effectiveBookingStatus(b);
@@ -1304,7 +1311,7 @@
       savePartnerNotice({...prev,unread:(prev.unread||0)+1,lastId:b.id,type:"booking",updated:created,items:[item,...(Array.isArray(prev.items)?prev.items:[])].slice(0,40)});
       if(read(store.partnerAuth,null)){
         showPartnerNotice(b);
-        if(E.modal.classList.contains("open")&&E.modalContent.querySelector(".partner-cabinet"))renderPartnerCabinet(true);
+        if(E.modal.classList.contains("open")&&E.modalContent.querySelector(".partner-cabinet")){partnerBookingFilter="new";renderPartnerCabinet(true)}
       }
     }
     function notifyPartnerPayment(b){
@@ -1313,7 +1320,7 @@
       savePartnerNotice({...prev,unread:(prev.unread||0)+1,lastId:b.id,type:"payment",updated:created,items:[item,...(Array.isArray(prev.items)?prev.items:[])].slice(0,40)});
       if(read(store.partnerAuth,null)){
         showPartnerPaymentNotice(b);
-        if(E.modal.classList.contains("open")&&E.modalContent.querySelector(".partner-cabinet"))renderPartnerCabinet(true);
+        if(E.modal.classList.contains("open")&&E.modalContent.querySelector(".partner-cabinet")){partnerBookingFilter="booked";renderPartnerCabinet(true)}
       }
     }
     function latestPartnerNoticeBooking(){
@@ -1324,6 +1331,8 @@
       E.partnerAlert.classList.remove("show");
       markPartnerNoticesRead();
       if(!read(store.partnerAuth,null)){renderPartnerLogin();return}
+      const noticed=latestPartnerNoticeBooking();
+      partnerBookingFilter=noticed?partnerBookingGroup(noticed):"new";
       renderPartnerCabinet();
       requestAnimationFrame(()=>document.querySelector("[data-partner-bookings]")?.scrollIntoView({behavior:"smooth",block:"start"}));
     }
@@ -1338,6 +1347,7 @@
     function openPartnerNoticeBooking(id){
       const b=read(store.bookings,[]).find(x=>x.id===id);
       if(!b)return toast("Заявка из уведомления больше недоступна.");
+      partnerBookingFilter=partnerBookingGroup(b);
       renderPartnerCabinet();
       requestAnimationFrame(()=>document.querySelector(`[data-booking-card="${id}"]`)?.scrollIntoView({behavior:"smooth",block:"center"}));
     }
@@ -1528,14 +1538,18 @@
       const top=E.modalBox.scrollTop,data=partnerData(),ids=partnerRoomIds(data),selected=ids.includes(state.partnerRoom)?state.partnerRoom:ids[0],date=state.partnerDate||state.date||today,room=data.rooms[selected],live=rooms.find(r=>r.id===selected),manualItems=partnerManualItems(selected,date,data);
       if((data.venue.cabinetStatus||"active")==="paused")return renderPartnerPaused();
       const busy=live?blockHours(bufferedBlocks(live,partnerBusyBlocks(live,date))):partnerBusyHours(selected,date,data);
-      const slots=Array.from({length:(live?.work[1]||24)-(live?.work[0]||10)},(_,i)=>(live?.work[0]||10)+i),booked=live?blockHours(bufferedBlocks(live,bookingBusyBlocks(live,date))):[],busyTotal=partnerBusyHoursTotal(data),bookedTotal=booked.length,books=partnerBookings(ids),bookingRows=books.map(b=>bookingCard(b,"partner")).join(""),venuePublished=(data.venue.publicationStatus||"published")==="published",publishedIds=venuePublished?ids.filter(id=>(data.rooms[id].status||"published")==="published"):[],rating=(ids.reduce((s,id)=>s+(rooms.find(r=>r.id===id)?.rating||0),0)/Math.max(1,ids.length)).toFixed(1);
+      const slots=Array.from({length:(live?.work[1]||24)-(live?.work[0]||10)},(_,i)=>(live?.work[0]||10)+i),booked=live?blockHours(bufferedBlocks(live,bookingBusyBlocks(live,date))):[],busyTotal=partnerBusyHoursTotal(data),bookedTotal=booked.length,books=partnerBookings(ids),venuePublished=(data.venue.publicationStatus||"published")==="published",publishedIds=venuePublished?ids.filter(id=>(data.rooms[id].status||"published")==="published"):[],rating=(ids.reduce((s,id)=>s+(rooms.find(r=>r.id===id)?.rating||0),0)/Math.max(1,ids.length)).toFixed(1);
+      const partnerCounts={new:0,payment:0,booked:0,history:0};books.forEach(b=>partnerCounts[partnerBookingGroup(b)]++);
+      const filteredBooks=partnerBookingFilter==="all"?books:books.filter(b=>partnerBookingGroup(b)===partnerBookingFilter),bookingRows=filteredBooks.map(b=>bookingCard(b,"partner")).join("");
+      const partnerFilters=[["new","Новые",partnerCounts.new],["payment","Ждут оплату",partnerCounts.payment],["booked","Оплачены",partnerCounts.booked],["history","История",partnerCounts.history],["all","Все",books.length]].map(([id,label,count])=>`<button class="booking-filter ${partnerBookingFilter===id?"active":""}" data-partner-booking-filter="${id}" type="button">${label} · ${count}</button>`).join("");
+      const partnerEmpty=books.length?`В разделе «${({new:"Новые",payment:"Ждут оплату",booked:"Оплачены",history:"История"})[partnerBookingFilter]||"Все"}» заявок пока нет.`:"Заявок по этим помещениям пока нет.";
       const weekStart=state.partnerWeekStart||date,weekDates=Array.from({length:7},(_,i)=>shiftDate(weekStart,i));
       const weekCards=live?weekDates.map(d=>{const x=partnerDaySummary(live,d),bookedWidth=x.total?x.booked/x.total*100:0,manualWidth=x.total?x.manual/x.total*100:0;return `<button class="week-day ${d===date?"active":""}" data-partner-day="${d}" type="button"><span>${weekdayLabel(d)}</span><strong>${shortDateLabel(d)}</strong><div class="week-bar"><i class="booked" style="width:${bookedWidth}%"></i><i class="manual" style="width:${manualWidth}%"></i></div><small>${x.free} свободно · ${x.booked} заявки · ${x.manual} вручную</small></button>`}).join(""):"";
       openModal(`<div class="partner-cabinet">
         <div class="partner-title"><span class="kicker">Кабинет партнёра</span><h2>${esc(data.venue.title)}</h2><p class="muted">Здесь площадка редактирует информацию о заведении, помещениях внутри него и отмечает занятость. Занятые часы сразу пропадают из свободных окон для клиента.</p></div>
         <div class="dash-grid"><div class="dash-card"><span class="muted">Заявки</span><strong>${books.length}</strong></div><div class="dash-card"><span class="muted">В каталоге</span><strong>${publishedIds.length}</strong></div><div class="dash-card"><span class="muted">Занято вручную</span><strong>${busyTotal}</strong></div><div class="dash-card"><span class="muted">Занято заявками</span><strong>${bookedTotal}</strong></div></div>
         <div class="chips"><button class="btn soft" data-partner-notifications type="button">Уведомления${Number(partnerNotice().unread||0)?` · ${Number(partnerNotice().unread)}`:""}</button><button class="btn soft" data-export="partner" type="button">Экспорт моих заявок CSV</button><span class="muted">${publicationStatusLabel(data.venue.publicationStatus)} · ${cabinetStatusLabel(data.venue.cabinetStatus)} · ${esc(data.venue.type||"Тип площадки не указан")} · ${ids.length} помещений</span></div>
-        <div class="partner-editor" data-partner-bookings><div class="admin-item-head"><div><h3>Заявки по вашим помещениям</h3><p class="muted" style="margin:0">Подтверждение здесь сразу обновляет админку Rooms и календарь доступности.</p></div><span class="status">${books.filter(b=>(b.status||"pending")==="pending").length} новых</span></div><div class="admin-list" style="margin-top:12px">${bookingRows||`<div class="empty" style="display:block">Заявок по этим комнатам пока нет.</div>`}</div></div>
+        <div class="partner-editor" data-partner-bookings><div class="admin-item-head"><div><h3>Заявки по вашим помещениям</h3><p class="muted" style="margin:0">Подтверждение здесь сразу обновляет админку Rooms и календарь доступности.</p></div><span class="status">${partnerCounts.new} новых</span></div><div class="booking-filters">${partnerFilters}</div><div class="admin-list">${bookingRows||`<div class="empty" style="display:block">${partnerEmpty}</div>`}</div></div>
         <div class="partner-shell">
           <form class="partner-editor" id="partnerVenueEdit">
             <h3>Заведение</h3>
@@ -1581,8 +1595,9 @@
       if(!form.login.value.trim()||form.password.value.length<4)return toast("Введите логин и пароль от 4 символов.");
       if((partnerData().venue.cabinetStatus||"active")==="paused")return renderPartnerPaused();
       write(store.partnerAuth,{login:form.login.value.trim()});
-      renderPartnerCabinet();
       const pendingNotice=partnerNotice().unread?latestPartnerNoticeBooking():null;
+      if(pendingNotice)partnerBookingFilter=partnerBookingGroup(pendingNotice);
+      renderPartnerCabinet();
       if(pendingNotice)(partnerNotice().type==="payment"?showPartnerPaymentNotice:showPartnerNotice)(pendingNotice,{sound:false});
       toast("Вы вошли в кабинет партнёра.");
     }
@@ -1719,7 +1734,7 @@
       const updated=list.find(b=>b.id===id);
       saveAdminBookings(list);if(updated)logActivity("booking_status","Статус заявки изменён",`${updated.id} · ${updated.room} · ${statusLabel(effectiveBookingStatus(updated))}`,after);hydrate();
       if(updated&&status!=="pending")notifyUserBooking(updated,status);
-      if(after==="partner")renderPartnerCabinet(true);
+      if(after==="partner"){partnerBookingFilter=updated?partnerBookingGroup(updated):"new";renderPartnerCabinet(true)}
       else if(after==="profile"){profileBookingFilter=updated?profileBookingGroup(updated):"active";renderProfile(true)}
       else renderAdminDashboard(true);
       toast(`Статус заявки: ${statusLabel(status)}.`);
@@ -1735,7 +1750,7 @@
       list=list.map(x=>x.id===id?{...x,status:"proposed",proposal,paymentStatus:"",paymentDueAt:""}:x);
       const updated=list.find(x=>x.id===id);
       saveAdminBookings(list);logActivity("booking_proposal","Площадка предложила другое время",`${updated.id} · ${proposal.date} ${proposal.time} · ${proposal.hours} ч`,after);hydrate();notifyUserBooking(updated,"proposed");
-      if(after==="partner")renderPartnerCabinet(true);else renderAdminDashboard(true);
+      if(after==="partner"){partnerBookingFilter=updated?partnerBookingGroup(updated):"new";renderPartnerCabinet(true)}else renderAdminDashboard(true);
       toast("Предложение отправлено клиенту.");
     }
     function acceptProposal(id){
@@ -1766,7 +1781,7 @@
       const updated=list.find(b=>b.id===id);
       saveAdminBookings(list);logActivity("booking_cancel","Бронь отменена",`${updated?.id||id} · ${cancelActorLabel(actor)} · ${reason}`,actor);hydrate();
       if(updated&&actor!=="client")notifyUserBooking(updated,"cancelled");
-      if(after==="partner")renderPartnerCabinet(true);
+      if(after==="partner"){partnerBookingFilter="history";renderPartnerCabinet(true)}
       else if(after==="profile"){profileBookingFilter="cancelled";renderProfile(true)}
       else renderAdminDashboard(true);
       toast(wasPaid?"Бронь отменена. Нужен разбор возврата предоплаты.":"Заявка отменена.");
@@ -1919,6 +1934,7 @@
       const galleryDir=e.target.closest("[data-gallery-dir]");if(galleryDir){moveGallery(galleryDir.closest("[data-gallery]"),Number(galleryDir.dataset.galleryDir));return}
       const galleryJump=e.target.closest("[data-gallery-jump]");if(galleryJump){jumpGallery(galleryJump);return}
       const partnerRoom=e.target.closest("[data-partner-room]");if(partnerRoom){state.partnerRoom=partnerRoom.dataset.partnerRoom;renderPartnerCabinet(true);return}
+      const partnerFilter=e.target.closest("[data-partner-booking-filter]");if(partnerFilter){partnerBookingFilter=partnerFilter.dataset.partnerBookingFilter;renderPartnerCabinet(true);return}
       const partnerDay=e.target.closest("[data-partner-day]");if(partnerDay){state.partnerDate=partnerDay.dataset.partnerDay;renderPartnerCabinet(true);return}
       const partnerWeek=e.target.closest("[data-partner-week]");if(partnerWeek){const start=state.partnerWeekStart||state.partnerDate||today,next=shiftDate(start,Number(partnerWeek.dataset.partnerWeek));state.partnerWeekStart=next<today?today:next;state.partnerDate=state.partnerWeekStart;renderPartnerCabinet(true);return}
       const busy=e.target.closest("[data-busy-toggle]");if(busy){togglePartnerBusy(busy.dataset.busyToggle);return}

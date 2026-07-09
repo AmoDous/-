@@ -317,6 +317,19 @@
     .window:hover{border-color:#e1b5a7;background:#fff}
     .window:active{transform:scale(.98)}
     .window.active{border-color:var(--green);background:var(--green);color:#fff}
+    .availability-week{display:flex;gap:8px;margin-top:10px;overflow:auto;padding-bottom:3px;scrollbar-width:none}
+    .availability-week::-webkit-scrollbar{display:none}
+    .availability-day{
+      min-width:96px;flex:1;border:1px solid var(--line);border-radius:14px;background:#fff;padding:10px;text-align:left;
+      color:var(--ink);transition:.18s ease;
+    }
+    .availability-day:hover{border-color:#e1b5a7;background:var(--mint);transform:translateY(-1px)}
+    .availability-day.active{border-color:var(--green);background:var(--green);color:#fff}
+    .availability-day.empty{opacity:.58}
+    .availability-day span,.availability-day small{display:block}
+    .availability-day span{font-size:12px;font-weight:900;text-transform:capitalize}
+    .availability-day strong{display:block;margin-top:3px;font-size:15px}
+    .availability-day small{margin-top:5px;color:inherit;font-size:11px;line-height:1.35;opacity:.78}
     .note{margin:10px 0 0;color:var(--muted);font-size:13px;line-height:1.5}
     .room-list{display:grid;gap:10px}
     .room-option{
@@ -1350,6 +1363,14 @@
     function capacityAtHour(r,date,h){const work=effectiveWork(r,date);if(!work)return 0;const [start,end]=work;if(h<start||h>=end)return 0;let next=end;for(const [a,b] of blocked(r,date)){if(overlaps(h,h+1,a,b))return 0;if(a>=h)next=Math.min(next,a)}return Math.max(0,Math.floor(next-h))}
     function capacity(r,date,t){return capacityAtHour(r,date,slotHour(r,t,date))}
     function freeWindows(r,date){const work=effectiveWork(r,date),arr=[];if(!work)return arr;for(let h=work[0];h<work[1];h++){const time=hourLabel(h),max=capacityAtHour(r,date,h);if(max>=r.min)arr.push({time,max})}return arr}
+    function dayAvailability(r,date){
+      const wins=freeWindows(r,date),best=wins.reduce((m,w)=>Math.max(m,w.max),0),freeHours=wins.reduce((s,w)=>s+w.max,0);
+      return {date,wins,best,freeHours};
+    }
+    function availabilityWeek(r,selected=state.date){
+      const start=selected&&selected>=today?selected:today;
+      return Array.from({length:7},(_,i)=>dayAvailability(r,shiftDate(start,i))).map(x=>`<button class="availability-day ${x.date===selected?"active":""} ${x.wins.length?"":"empty"}" data-availability-day="${r.id}|${x.date}" type="button"><span>${weekdayLabel(x.date)}</span><strong>${shortDateLabel(x.date)}</strong><small>${x.wins.length?`${x.wins.length} окон · до ${x.best} ${hourWord(x.best)}`:"нет окон"}</small></button>`).join("");
+    }
     function betterWindow(r,date,chosen,max){return freeWindows(r,date).filter(w=>w.max>max&&w.time!==chosen).sort((a,b)=>b.max-a.max)[0]}
     function hourWord(n){return n===1?"час":n<5?"часа":"часов"}
     function bookingHourList(r,date,time){
@@ -1726,6 +1747,7 @@
         </div>
         <aside class="price-box">
           <span class="muted">Расчёт</span><h2 style="margin:4px 0 12px">${money(total)}</h2>
+          <div class="availability-week">${availabilityWeek(r,state.date)}</div>
           <div class="form"><div class="field"><label>Дата</label><input data-detail-date="${r.id}" type="date" min="${today}" value="${state.date}"></div><div class="field"><label>На сколько часов</label><select data-detail-hours="${r.id}">${[1,2,3,4,5,6].map(x=>`<option value="${x}" ${x===hours?"selected":""} ${(x<r.min||max&&x>max)?"disabled":""}>${x} ${x===1?"час":x<5?"часа":"часов"}</option>`).join("")}</select></div></div>
           <h3 style="margin:14px 0 0">Свободные окна</h3>
           <div class="windows">${wins.length?wins.map(w=>`<button class="window ${w.time===chosen?"active":""}" data-window="${r.id}|${w.time}" type="button">${w.time} · до ${w.max} ч</button>`).join(""):`<span class="window">Нет окон на эту дату</span>`}</div>
@@ -2369,7 +2391,7 @@
     E.modal.addEventListener("click",e=>{if(e.target===E.modal)closeModal()});
     E.partnerForm.addEventListener("submit",e=>{e.preventDefault();const lead={id:`P-${Date.now().toString().slice(-6)}`,city:$("partnerCity").value,venue:$("partnerVenue").value,address:$("partnerAddress").value,name:$("partnerName").value,phone:$("partnerPhone").value,email:$("partnerEmail").value,type:$("partnerType").value,rooms:Number($("partnerRooms").value)||1,comment:$("partnerComment").value,status:"new",created:new Date().toISOString()};write(store.partner,[lead,...read(store.partner,[])]);logActivity("partner_lead","Новая заявка партнёра",`${lead.venue} · ${lead.city} · ${lead.rooms} помещений`);E.partnerStatus.textContent="Заявка отправлена";toast("Спасибо. Мы свяжемся с площадкой.");E.partnerForm.reset();$("partnerCity").value=state.city});
     document.addEventListener("submit",e=>{if(e.target.matches("[data-booking-note-form]")){e.preventDefault();saveBookingNote(e.target)}if(e.target.matches("[data-review-reply-form]")){e.preventDefault();saveReviewReply(e.target)}if(e.target.id==="bookingForm"){e.preventDefault();submitBooking(e.target)}if(e.target.id==="proposalForm"){e.preventDefault();submitProposal(e.target)}if(e.target.id==="cancelBookingForm"){e.preventDefault();submitCancelBooking(e.target)}if(e.target.id==="reviewForm"){e.preventDefault();submitReview(e.target)}if(e.target.id==="loginForm"){e.preventDefault();login(e.target)}if(e.target.id==="registerForm"){e.preventDefault();register(e.target)}if(e.target.id==="personalDataForm"){e.preventDefault();savePersonalData(e.target)}if(e.target.id==="partnerLoginForm"){e.preventDefault();partnerLogin(e.target)}if(e.target.id==="partnerVenueEdit"){e.preventDefault();savePartnerVenue(e.target)}if(e.target.id==="partnerSpecialHours"){e.preventDefault();savePartnerSpecialHours(e.target)}if(e.target.id==="partnerRoomCreate"){e.preventDefault();createPartnerRoom(e.target)}if(e.target.id==="partnerRoomEdit"){e.preventDefault();savePartnerRoom(e.target)}if(e.target.id==="partnerBusyCreate"){e.preventDefault();createPartnerManualBusy(e.target)}});
-    document.addEventListener("change",e=>{if(e.target.matches("[data-special-mode]")){const fields=e.target.form?.querySelector("[data-special-fields]");if(fields)fields.hidden=e.target.value!=="custom";return}if(e.target.matches('[name^="work_"][name$="_enabled"]')){e.target.closest(".schedule-day")?.classList.toggle("off",!e.target.checked);return}if(e.target.matches("[data-proposal-date],[data-proposal-time],[data-proposal-hours]")){updateProposalForm(e.target.form);return}if(e.target.matches("[data-booking-date],[data-booking-time],[data-booking-hours],[data-booking-service]")){updateBookingForm(e.target.form);return}if(e.target.matches("[data-detail-date]")){state.date=e.target.value;E.date.value=state.date;renderSpace(e.target.dataset.detailDate,true)}if(e.target.matches("[data-detail-hours]")){state.hours=Number(e.target.value);E.hours.value=String(state.hours);renderSpace(e.target.dataset.detailHours,true)}if(e.target.matches("[data-admin-booking-event]")){adminBookingEventFilter=e.target.value;renderAdminDashboard(true);return}if(e.target.matches("[data-partner-booking-event]")){partnerBookingEventFilter=e.target.value;renderPartnerCabinet(true);return}if(e.target.matches("[data-partner-busy-room]")){state.partnerRoom=e.target.value;renderPartnerCabinet(true)}if(e.target.matches("[data-partner-busy-date]")){state.partnerDate=e.target.value;state.partnerWeekStart=e.target.value;renderPartnerCabinet(true)}if(e.target.matches("[data-photo-upload]"))handlePhotoUpload(e.target)});
+    document.addEventListener("change",e=>{if(e.target.matches("[data-special-mode]")){const fields=e.target.form?.querySelector("[data-special-fields]");if(fields)fields.hidden=e.target.value!=="custom";return}if(e.target.matches('[name^="work_"][name$="_enabled"]')){e.target.closest(".schedule-day")?.classList.toggle("off",!e.target.checked);return}if(e.target.matches("[data-proposal-date],[data-proposal-time],[data-proposal-hours]")){updateProposalForm(e.target.form);return}if(e.target.matches("[data-booking-date],[data-booking-time],[data-booking-hours],[data-booking-service]")){updateBookingForm(e.target.form);return}if(e.target.matches("[data-detail-date]")){state.date=e.target.value;state.time="";E.date.value=state.date;syncDateDisplay();renderSpace(e.target.dataset.detailDate,true)}if(e.target.matches("[data-detail-hours]")){state.hours=Number(e.target.value);E.hours.value=String(state.hours);renderSpace(e.target.dataset.detailHours,true)}if(e.target.matches("[data-admin-booking-event]")){adminBookingEventFilter=e.target.value;renderAdminDashboard(true);return}if(e.target.matches("[data-partner-booking-event]")){partnerBookingEventFilter=e.target.value;renderPartnerCabinet(true);return}if(e.target.matches("[data-partner-busy-room]")){state.partnerRoom=e.target.value;renderPartnerCabinet(true)}if(e.target.matches("[data-partner-busy-date]")){state.partnerDate=e.target.value;state.partnerWeekStart=e.target.value;renderPartnerCabinet(true)}if(e.target.matches("[data-photo-upload]"))handlePhotoUpload(e.target)});
     document.addEventListener("click",e=>{
       const city=e.target.closest("[data-city-choice]");if(city){selectCity(city.dataset.cityChoice);closeModal();toast(`Город поиска: ${city.dataset.cityChoice}`);return}
       const scenario=e.target.closest("[data-scenario]");if(scenario){E.scenarioGrid.querySelectorAll(".scenario").forEach(b=>b.classList.toggle("active",b===scenario));E.spaceType.value=scenario.dataset.scenario;renderCatalog(scenario.dataset.scenario);document.getElementById("catalog").scrollIntoView({behavior:"smooth"});return}
@@ -2377,6 +2399,7 @@
       const mapVenue=e.target.closest("[data-map-venue]");if(mapVenue){catalogMapVenueId=mapVenue.dataset.mapVenue;renderCatalogMap();return}
       const galleryDir=e.target.closest("[data-gallery-dir]");if(galleryDir){moveGallery(galleryDir.closest("[data-gallery]"),Number(galleryDir.dataset.galleryDir));return}
       const galleryJump=e.target.closest("[data-gallery-jump]");if(galleryJump){jumpGallery(galleryJump);return}
+      const availabilityDay=e.target.closest("[data-availability-day]");if(availabilityDay){const [id,date]=availabilityDay.dataset.availabilityDay.split("|");state.date=date;state.time="";E.date.value=date;syncDateDisplay();renderSpace(id,true);return}
       const serviceAdd=e.target.closest("[data-service-add]");if(serviceAdd){serviceAdd.parentElement.querySelector("[data-service-editor]")?.insertAdjacentHTML("beforeend",serviceRow());return}
       const serviceRemove=e.target.closest("[data-service-remove]");if(serviceRemove){serviceRemove.closest(".service-row")?.remove();return}
       const partnerRoom=e.target.closest("[data-partner-room]");if(partnerRoom){state.partnerRoom=partnerRoom.dataset.partnerRoom;renderPartnerCabinet(true);return}

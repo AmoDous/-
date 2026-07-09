@@ -330,6 +330,9 @@
     }
     .review-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:8px}
     .stars{color:var(--green);font-weight:950;letter-spacing:.04em}
+    .review-reply{margin-top:10px;border-left:3px solid var(--green);border-radius:12px;background:var(--mint);padding:10px 12px;color:var(--muted);font-size:13px;line-height:1.45}
+    .review-reply strong{display:block;color:var(--ink);font-size:13px;margin-bottom:3px}
+    .review-status{display:flex;flex-wrap:wrap;gap:7px;margin-top:10px}
     .review-gate{margin-top:12px;border:1px dashed #ddc5bc;border-radius:16px;background:var(--mint);padding:12px;color:var(--muted);font-size:13px;line-height:1.45}
     .review-form{display:grid;gap:10px;margin-top:12px}
     .map-frame{overflow:hidden;margin-top:12px;border:1px solid var(--line);border-radius:16px;background:var(--mint)}
@@ -1079,6 +1082,12 @@
       });
     }
     function customReviews(){return read(store.reviews,[])}
+    function seedReviewItems(){return seedReviews.map((x,i)=>({...x,id:x.id||`S-${x.room}-${i}`,status:"published",seed:true}))}
+    function reviewStatus(x){return x.status||"published"}
+    function reviewStatusLabel(s){return ({pending:"на модерации",published:"опубликован",rejected:"отклонён"})[s]||"опубликован"}
+    function reviewStatusClass(s){return s==="published"?"paid":s==="rejected"?"cancelled":"review"}
+    function reviewRank(x){return ({pending:0,published:1,rejected:2})[reviewStatus(x)]??1}
+    function allReviews(){return [...seedReviewItems(),...customReviews()]}
     function demoBookings(){
       return [
         {id:"R-240718",roomId:"kosmos",room:"Комната Космос",venue:"Kids Loft",city:"Воронеж",date:today,time:"14:00",hours:3,guests:8,name:"Анна",phone:"79031234567",eventType:"kids",eventName:"День рождения Алисы",total:4800,prepay:1440,status:"pending",created:new Date().toISOString()},
@@ -1258,9 +1267,9 @@
       if(!items.length)return "";
       return `<details class="booking-history"><summary>История заявки · ${items.length}</summary><div class="booking-history-list">${items.map(x=>`<div class="booking-history-item"><i class="history-dot"></i><div><strong>${esc(x.title)}</strong><span>${esc(historyActorLabel(x.actor))} · ${new Date(x.created||Date.now()).toLocaleString("ru-RU",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})}${x.details?` · ${esc(x.details)}`:""}</span></div></div>`).join("")}</div></details>`;
     }
-    function roomReviews(id){return [...seedReviews,...customReviews()].filter(x=>x.room===id)}
+    function roomReviews(id){return allReviews().filter(x=>x.room===id&&reviewStatus(x)==="published")}
     function reviewStats(r){
-      const extra=customReviews().filter(x=>x.room===r.id);
+      const extra=customReviews().filter(x=>x.room===r.id&&reviewStatus(x)==="published");
       const count=r.reviews+extra.length;
       const sum=r.rating*r.reviews+extra.reduce((s,x)=>s+Number(x.rating||0),0);
       return {rating:(sum/count).toFixed(1),count};
@@ -1273,9 +1282,23 @@
     function hasUserReview(id){
       const acc=current();if(!acc)return false;
       const ph=phone(acc.phone);
-      return customReviews().some(x=>x.room===id&&(x.userId===acc.id||phone(x.phone)===ph));
+      return customReviews().some(x=>x.room===id&&reviewStatus(x)!=="rejected"&&(x.userId===acc.id||phone(x.phone)===ph));
+    }
+    function userReviewState(id){
+      const acc=current();if(!acc)return null;
+      const ph=phone(acc.phone);
+      return customReviews().find(x=>x.room===id&&(x.userId===acc.id||phone(x.phone)===ph))||null;
     }
     function stars(n){return "★".repeat(Math.round(Number(n)||0))+"☆".repeat(Math.max(0,5-Math.round(Number(n)||0)))}
+    function reviewRoomLabel(x){return rooms.find(r=>r.id===x.room)?.title||x.room}
+    function reviewVenueLabel(x){const r=rooms.find(item=>item.id===x.room);return r?venue(r).title:"Rooms"}
+    function reviewCard(x,area="public"){
+      const st=reviewStatus(x),reply=x.reply?`<div class="review-reply"><strong>Ответ площадки</strong>${esc(x.reply)}</div>`:"";
+      const status=area==="public"?"":`<div class="review-status"><span class="status ${reviewStatusClass(st)}">${reviewStatusLabel(st)}</span>${x.seed?`<span class="tag soft">демо-отзыв</span>`:""}</div>`;
+      const adminActions=area==="admin"&&!x.seed?`<div class="admin-actions">${st!=="published"?`<button class="btn primary" data-review-status="${x.id}|published" type="button">Опубликовать</button>`:""}${st!=="rejected"?`<button class="btn" data-review-status="${x.id}|rejected" type="button">Отклонить</button>`:""}${st!=="pending"?`<button class="btn" data-review-status="${x.id}|pending" type="button">Вернуть на модерацию</button>`:""}</div>`:"";
+      const partnerReply=area==="partner"&&!x.seed&&st==="published"?`<form class="review-form" data-review-reply-form data-review="${x.id}"><div class="field full"><label>Ответ площадки</label><textarea name="reply" placeholder="Поблагодарите гостя или аккуратно ответьте на замечание">${esc(x.reply||"")}</textarea></div><button class="btn soft" type="submit" style="width:max-content">${x.reply?"Обновить ответ":"Ответить"}</button></form>`:"";
+      return `<article class="review"><div class="review-head"><div><strong>${esc(x.name)}</strong><div class="muted">${esc(reviewVenueLabel(x))} · ${esc(reviewRoomLabel(x))} · ${esc(x.date)}</div></div><span class="stars">${stars(x.rating)}</span></div><p class="muted" style="margin:0">${esc(x.text)}</p>${reply}${status}${adminActions}${partnerReply}</article>`;
+    }
     function phone(v){return String(v||"").replace(/\D/g,"")}
     function findAccount(login){const p=phone(login);return accounts().find(a=>phone(a.phone)===p||String(a.email||"").toLowerCase()===String(login||"").toLowerCase())}
     function overlaps(a,b,c,d){return Math.max(a,c)<Math.min(b,d)}
@@ -1644,9 +1667,10 @@
       button.closest(".thumbs").querySelectorAll(".thumb").forEach(b=>b.classList.toggle("active",b===button));
     }
     function renderReviews(r){
-      const list=roomReviews(r.id).slice(0,4),stats=reviewStats(r),acc=current(),can=hasVisitedRoom(r.id),done=hasUserReview(r.id);
-      const form=can&&!done?`<form class="review-form" id="reviewForm" data-review-room="${r.id}"><div class="form"><div class="field"><label>Оценка</label><select name="rating">${[5,4,3,2,1].map(x=>`<option value="${x}">${x} ${x===1?"звезда":"звёзд"}</option>`).join("")}</select></div><div class="field full"><label>Отзыв</label><textarea name="text" minlength="10" placeholder="Что понравилось, что было удобно, что важно знать другим гостям" required></textarea></div></div><button class="btn primary" type="submit" style="width:max-content">Оставить отзыв</button></form>`:`<div class="review-gate">${!acc?"Войдите в личный кабинет. Оставить отзыв можно только после завершённого посещения помещения.":done?"Спасибо, ваш отзыв по этому помещению уже добавлен.":"Оставить отзыв можно после посещения: площадка должна отметить бронь как состоявшуюся."}</div>`;
-      return `<div class="detail-card reviews-card" style="margin-top:14px"><div class="review-head"><div><h3 style="margin:0">Отзывы</h3><p class="muted" style="margin:4px 0 0">${stats.rating} · ${stats.count} отзывов</p></div><strong class="stars">${stars(stats.rating)}</strong></div><div class="review-list">${list.map(x=>`<article class="review"><div class="review-head"><div><strong>${esc(x.name)}</strong><div class="muted">${esc(x.date)}</div></div><span class="stars">${stars(x.rating)}</span></div><p class="muted" style="margin:0">${esc(x.text)}</p></article>`).join("")}</div>${form}</div>`;
+      const list=roomReviews(r.id).slice(0,4),stats=reviewStats(r),acc=current(),can=hasVisitedRoom(r.id),own=userReviewState(r.id),done=own&&reviewStatus(own)!=="rejected",retry=own&&reviewStatus(own)==="rejected";
+      const gateText=!acc?"Войдите в личный кабинет. Оставить отзыв можно только после завершённого посещения помещения.":done?reviewStatus(own)==="pending"?"Ваш отзыв отправлен на модерацию. После проверки он появится в карточке помещения.":"Спасибо, ваш отзыв по этому помещению уже опубликован.":"Оставить отзыв можно после посещения: площадка должна отметить бронь как состоявшуюся.";
+      const form=can&&!done?`${retry?`<div class="review-gate">Прошлый отзыв не прошёл модерацию. Можно отправить новый вариант.</div>`:""}<form class="review-form" id="reviewForm" data-review-room="${r.id}"><div class="form"><div class="field"><label>Оценка</label><select name="rating">${[5,4,3,2,1].map(x=>`<option value="${x}">${x} ${x===1?"звезда":"звёзд"}</option>`).join("")}</select></div><div class="field full"><label>Отзыв</label><textarea name="text" minlength="10" placeholder="Что понравилось, что было удобно, что важно знать другим гостям" required></textarea></div></div><button class="btn primary" type="submit" style="width:max-content">Оставить отзыв</button></form>`:`<div class="review-gate">${gateText}</div>`;
+      return `<div class="detail-card reviews-card" style="margin-top:14px"><div class="review-head"><div><h3 style="margin:0">Отзывы</h3><p class="muted" style="margin:4px 0 0">${stats.rating} · ${stats.count} отзывов</p></div><strong class="stars">${stars(stats.rating)}</strong></div><div class="review-list">${list.length?list.map(x=>reviewCard(x,"public")).join(""):`<div class="empty" style="display:block">Опубликованных отзывов пока нет.</div>`}</div>${form}</div>`;
     }
 
     function renderSpace(id,keep=false){
@@ -1787,7 +1811,7 @@
       if(focusBookings)requestAnimationFrame(()=>document.querySelector("[data-profile-bookings]")?.scrollIntoView({behavior:"smooth",block:"start"}));
     }
     function renderAdminDashboard(keep=false){
-      const top=E.modalBox.scrollTop,books=adminBookings(),leads=adminLeads(),reviews=[...seedReviews,...customReviews()],adminCounts={new:0,payment:0,booked:0,history:0};
+      const top=E.modalBox.scrollTop,books=adminBookings(),leads=adminLeads(),reviews=customReviews().sort((a,b)=>reviewRank(a)-reviewRank(b)),adminCounts={new:0,payment:0,booked:0,history:0};
       books.forEach(b=>adminCounts[partnerBookingGroup(b)]++);
       const pending=adminCounts.new,confirmed=adminCounts.payment+adminCounts.booked,visitCount=books.filter(b=>["visited","completed"].includes(effectiveBookingStatus(b))).length;
       const paidBooks=books.filter(isPrepayPaid),refundPendingBooks=books.filter(b=>b.paymentStatus==="refund_pending"),refundedBooks=books.filter(b=>b.paymentStatus==="refunded");
@@ -1810,7 +1834,7 @@
         </div>
         <div class="admin-grid">
           <section class="admin-panel"><h3>Площадки и комнаты</h3><div class="admin-room-table">${roomRows}</div></section>
-          <aside class="admin-panel"><h3>Отзывы</h3><div class="admin-list">${reviews.slice(0,4).map(x=>`<article class="admin-item"><div class="admin-item-head"><div><h4>${esc(x.name)}</h4><p class="muted" style="margin:0">${esc(rooms.find(r=>r.id===x.room)?.title||x.room)} · ${esc(x.date)}</p></div><span class="status review">${stars(x.rating)}</span></div><p class="muted" style="margin:9px 0 0">${esc(x.text)}</p></article>`).join("")}</div></aside>
+          <aside class="admin-panel"><h3>Отзывы на модерации</h3><div class="admin-list">${reviews.slice(0,8).map(x=>reviewCard(x,"admin")).join("")||`<div class="empty" style="display:block">Пользовательских отзывов пока нет.</div>`}</div></aside>
         </div>
         <div class="admin-grid">
           <section class="admin-panel"><h3>История действий</h3>${renderActivity(10)}</section>
@@ -1834,6 +1858,7 @@
       const slots=dayWork?Array.from({length:dayWork[1]-dayWork[0]},(_,i)=>dayWork[0]+i):[],booked=live?blockHours(bufferedBlocks(live,bookingBusyBlocks(live,date))):[],busyTotal=partnerBusyHoursTotal(data),bookedTotal=booked.length,books=partnerBookings(ids),venuePublished=(data.venue.publicationStatus||"published")==="published",publishedIds=venuePublished?ids.filter(id=>(data.rooms[id].status||"published")==="published"):[],rating=(ids.reduce((s,id)=>s+(rooms.find(r=>r.id===id)?.rating||0),0)/Math.max(1,ids.length)).toFixed(1);
       const partnerCounts={new:0,payment:0,booked:0,history:0};books.forEach(b=>partnerCounts[partnerBookingGroup(b)]++);
       const partnerBaseBooks=partnerBookingFilter==="all"?books:books.filter(b=>partnerBookingGroup(b)===partnerBookingFilter),filteredBooks=sortBookingQueue(filterBookingQueue(books,partnerBookingFilter,partnerBookingDateFilter,partnerBookingEventFilter)),bookingRows=filteredBooks.map(b=>bookingCard(b,"partner")).join("");
+      const partnerReviews=allReviews().filter(x=>ids.includes(x.room)&&reviewStatus(x)==="published").slice(0,6);
       const partnerFilters=[["new","Новые",partnerCounts.new],["payment","Ждут оплату",partnerCounts.payment],["booked","Оплачены",partnerCounts.booked],["history","История",partnerCounts.history],["all","Все",books.length]].map(([id,label,count])=>`<button class="booking-filter ${partnerBookingFilter===id?"active":""}" data-partner-booking-filter="${id}" type="button">${label} · ${count}</button>`).join("");
       const partnerQueue=bookingQueueControls(partnerBaseBooks,"partner",partnerBookingDateFilter,partnerBookingEventFilter);
       const partnerEmpty=partnerBaseBooks.length?"По выбранной дате и формату события заявок нет. Сбросьте фильтры очереди или выберите другую вкладку.":books.length?`В разделе «${({new:"Новые",payment:"Ждут оплату",booked:"Оплачены",history:"История"})[partnerBookingFilter]||"Все"}» заявок пока нет.`:"Заявок по этим помещениям пока нет.";
@@ -1844,6 +1869,7 @@
         <div class="dash-grid"><div class="dash-card"><span class="muted">Заявки</span><strong>${books.length}</strong></div><div class="dash-card"><span class="muted">В каталоге</span><strong>${publishedIds.length}</strong></div><div class="dash-card"><span class="muted">Занято вручную</span><strong>${busyTotal}</strong></div><div class="dash-card"><span class="muted">Занято заявками</span><strong>${bookedTotal}</strong></div></div>
         <div class="chips"><button class="btn soft" data-partner-notifications type="button">Уведомления${Number(partnerNotice().unread||0)?` · ${Number(partnerNotice().unread)}`:""}</button><button class="btn soft" data-export="partner" type="button">Экспорт моих заявок CSV</button><span class="muted">${publicationStatusLabel(data.venue.publicationStatus)} · ${cabinetStatusLabel(data.venue.cabinetStatus)} · ${esc(data.venue.type||"Тип площадки не указан")} · ${ids.length} помещений</span></div>
         <div class="partner-editor" data-partner-bookings><div class="admin-item-head"><div><h3>Заявки по вашим помещениям</h3><p class="muted" style="margin:0">Подтверждение здесь сразу обновляет админку Rooms и календарь доступности.</p></div><span class="status">${partnerCounts.new} новых</span></div><div class="booking-filters">${partnerFilters}</div>${partnerQueue}<div class="admin-list">${bookingRows||`<div class="empty" style="display:block">${partnerEmpty}</div>`}</div></div>
+        <div class="partner-editor"><div class="admin-item-head"><div><h3>Отзывы гостей</h3><p class="muted" style="margin:0">Площадка видит опубликованные отзывы и может оставить публичный ответ.</p></div><span class="status review">${partnerReviews.length} отзывов</span></div><div class="review-list">${partnerReviews.length?partnerReviews.map(x=>reviewCard(x,"partner")).join(""):`<div class="empty" style="display:block">Опубликованных отзывов по вашим помещениям пока нет.</div>`}</div></div>
         <div class="partner-shell">
           <form class="partner-editor" id="partnerVenueEdit">
             <h3>Заведение</h3>
@@ -2160,6 +2186,22 @@
       logActivity("venue_status","Rooms изменил статус площадки",`${v.title} · ${label}`,"admin");
       renderAdminDashboard(true);toast(`Статус «${v.title}»: ${label}.`);
     }
+    function updateReviewStatus(payload){
+      const [id,status]=payload.split("|"),allowed=["pending","published","rejected"];
+      if(!allowed.includes(status))return toast("Неизвестный статус отзыва.");
+      let updated=null,list=customReviews().map(x=>x.id===id?(updated={...x,status,moderatedAt:new Date().toISOString()}):x);
+      if(!updated)return toast("Отзыв не найден.");
+      write(store.reviews,list);logActivity("review_status","Статус отзыва изменён",`${reviewRoomLabel(updated)} · ${reviewStatusLabel(status)}`,"admin");
+      renderAdminDashboard(true);toast(`Отзыв: ${reviewStatusLabel(status)}.`);
+    }
+    function saveReviewReply(form){
+      const id=form.dataset.review,reply=String(new FormData(form).get("reply")||"").trim();
+      if(reply.length<3)return toast("Напишите короткий ответ площадки.");
+      let updated=null,list=customReviews().map(x=>x.id===id?(updated={...x,reply,replyUpdatedAt:new Date().toISOString()}):x);
+      if(!updated)return toast("Отзыв не найден.");
+      write(store.reviews,list);logActivity("review_reply","Партнёр ответил на отзыв",`${reviewRoomLabel(updated)} · ${updated.name}`,"partner");
+      renderPartnerCabinet(true);toast("Ответ площадки сохранён.");
+    }
     function payBooking(id){
       let list=read(store.bookings,[]);
       const item=list.find(b=>b.id===id),acc=current();
@@ -2195,9 +2237,10 @@
       if(hasUserReview(id))return toast("Вы уже оставили отзыв по этому помещению.");
       const fd=new FormData(form),text=String(fd.get("text")||"").trim();
       if(text.length<10)return toast("Напишите чуть подробнее, от 10 символов.");
-      const item={id:`V-${Date.now().toString().slice(-6)}`,room:id,userId:acc.id,phone:acc.phone,name:acc.name||"Гость Rooms",rating:Number(fd.get("rating")),text,date:new Intl.DateTimeFormat("ru-RU",{month:"long",year:"numeric"}).format(new Date()),created:new Date().toISOString()};
+      const item={id:`V-${Date.now().toString().slice(-6)}`,room:id,userId:acc.id,phone:acc.phone,name:acc.name||"Гость Rooms",rating:Number(fd.get("rating")),text,date:new Intl.DateTimeFormat("ru-RU",{month:"long",year:"numeric"}).format(new Date()),status:"pending",created:new Date().toISOString()};
       write(store.reviews,[item,...customReviews()].slice(0,80));
-      toast("Спасибо, отзыв добавлен.");
+      logActivity("review_new","Новый отзыв на модерации",`${r.title} · ${item.rating}★`,"client");
+      toast("Спасибо, отзыв отправлен на модерацию.");
       renderSpace(r.id,true);
     }
     function login(form){
@@ -2278,7 +2321,7 @@
     E.modalClose.addEventListener("click",closeModal);
     E.modal.addEventListener("click",e=>{if(e.target===E.modal)closeModal()});
     E.partnerForm.addEventListener("submit",e=>{e.preventDefault();const lead={id:`P-${Date.now().toString().slice(-6)}`,city:$("partnerCity").value,venue:$("partnerVenue").value,address:$("partnerAddress").value,name:$("partnerName").value,phone:$("partnerPhone").value,email:$("partnerEmail").value,type:$("partnerType").value,rooms:Number($("partnerRooms").value)||1,comment:$("partnerComment").value,status:"new",created:new Date().toISOString()};write(store.partner,[lead,...read(store.partner,[])]);logActivity("partner_lead","Новая заявка партнёра",`${lead.venue} · ${lead.city} · ${lead.rooms} помещений`);E.partnerStatus.textContent="Заявка отправлена";toast("Спасибо. Мы свяжемся с площадкой.");E.partnerForm.reset();$("partnerCity").value=state.city});
-    document.addEventListener("submit",e=>{if(e.target.matches("[data-booking-note-form]")){e.preventDefault();saveBookingNote(e.target)}if(e.target.id==="bookingForm"){e.preventDefault();submitBooking(e.target)}if(e.target.id==="proposalForm"){e.preventDefault();submitProposal(e.target)}if(e.target.id==="cancelBookingForm"){e.preventDefault();submitCancelBooking(e.target)}if(e.target.id==="reviewForm"){e.preventDefault();submitReview(e.target)}if(e.target.id==="loginForm"){e.preventDefault();login(e.target)}if(e.target.id==="registerForm"){e.preventDefault();register(e.target)}if(e.target.id==="personalDataForm"){e.preventDefault();savePersonalData(e.target)}if(e.target.id==="partnerLoginForm"){e.preventDefault();partnerLogin(e.target)}if(e.target.id==="partnerVenueEdit"){e.preventDefault();savePartnerVenue(e.target)}if(e.target.id==="partnerSpecialHours"){e.preventDefault();savePartnerSpecialHours(e.target)}if(e.target.id==="partnerRoomCreate"){e.preventDefault();createPartnerRoom(e.target)}if(e.target.id==="partnerRoomEdit"){e.preventDefault();savePartnerRoom(e.target)}if(e.target.id==="partnerBusyCreate"){e.preventDefault();createPartnerManualBusy(e.target)}});
+    document.addEventListener("submit",e=>{if(e.target.matches("[data-booking-note-form]")){e.preventDefault();saveBookingNote(e.target)}if(e.target.matches("[data-review-reply-form]")){e.preventDefault();saveReviewReply(e.target)}if(e.target.id==="bookingForm"){e.preventDefault();submitBooking(e.target)}if(e.target.id==="proposalForm"){e.preventDefault();submitProposal(e.target)}if(e.target.id==="cancelBookingForm"){e.preventDefault();submitCancelBooking(e.target)}if(e.target.id==="reviewForm"){e.preventDefault();submitReview(e.target)}if(e.target.id==="loginForm"){e.preventDefault();login(e.target)}if(e.target.id==="registerForm"){e.preventDefault();register(e.target)}if(e.target.id==="personalDataForm"){e.preventDefault();savePersonalData(e.target)}if(e.target.id==="partnerLoginForm"){e.preventDefault();partnerLogin(e.target)}if(e.target.id==="partnerVenueEdit"){e.preventDefault();savePartnerVenue(e.target)}if(e.target.id==="partnerSpecialHours"){e.preventDefault();savePartnerSpecialHours(e.target)}if(e.target.id==="partnerRoomCreate"){e.preventDefault();createPartnerRoom(e.target)}if(e.target.id==="partnerRoomEdit"){e.preventDefault();savePartnerRoom(e.target)}if(e.target.id==="partnerBusyCreate"){e.preventDefault();createPartnerManualBusy(e.target)}});
     document.addEventListener("change",e=>{if(e.target.matches("[data-special-mode]")){const fields=e.target.form?.querySelector("[data-special-fields]");if(fields)fields.hidden=e.target.value!=="custom";return}if(e.target.matches('[name^="work_"][name$="_enabled"]')){e.target.closest(".schedule-day")?.classList.toggle("off",!e.target.checked);return}if(e.target.matches("[data-proposal-date],[data-proposal-time],[data-proposal-hours]")){updateProposalForm(e.target.form);return}if(e.target.matches("[data-booking-date],[data-booking-time],[data-booking-hours],[data-booking-service]")){updateBookingForm(e.target.form);return}if(e.target.matches("[data-detail-date]")){state.date=e.target.value;E.date.value=state.date;renderSpace(e.target.dataset.detailDate,true)}if(e.target.matches("[data-detail-hours]")){state.hours=Number(e.target.value);E.hours.value=String(state.hours);renderSpace(e.target.dataset.detailHours,true)}if(e.target.matches("[data-admin-booking-event]")){adminBookingEventFilter=e.target.value;renderAdminDashboard(true);return}if(e.target.matches("[data-partner-booking-event]")){partnerBookingEventFilter=e.target.value;renderPartnerCabinet(true);return}if(e.target.matches("[data-partner-busy-room]")){state.partnerRoom=e.target.value;renderPartnerCabinet(true)}if(e.target.matches("[data-partner-busy-date]")){state.partnerDate=e.target.value;state.partnerWeekStart=e.target.value;renderPartnerCabinet(true)}if(e.target.matches("[data-photo-upload]"))handlePhotoUpload(e.target)});
     document.addEventListener("click",e=>{
       const city=e.target.closest("[data-city-choice]");if(city){selectCity(city.dataset.cityChoice);closeModal();toast(`Город поиска: ${city.dataset.cityChoice}`);return}
@@ -2311,6 +2354,7 @@
       const adminDateFilter=e.target.closest("[data-admin-booking-date]");if(adminDateFilter){adminBookingDateFilter=adminDateFilter.dataset.adminBookingDate;renderAdminDashboard(true);return}
       const adminLead=e.target.closest("[data-admin-lead]");if(adminLead){updateLeadStatus(adminLead.dataset.adminLead);return}
       const adminVenue=e.target.closest("[data-admin-venue]");if(adminVenue){updateVenueAdmin(adminVenue.dataset.adminVenue);return}
+      const reviewStatus=e.target.closest("[data-review-status]");if(reviewStatus){updateReviewStatus(reviewStatus.dataset.reviewStatus);return}
       const win=e.target.closest("[data-window]");if(win){const [id,t]=win.dataset.window.split("|");state.time=t;E.time.value=t;renderSpace(id,true);return}
       const room=e.target.closest("[data-open-room]");if(room){renderSpace(room.dataset.openRoom);return}
       const book=e.target.closest("[data-book]");if(book){renderBooking(book.dataset.book);return}

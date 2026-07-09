@@ -235,8 +235,10 @@
     .row{display:flex;justify-content:space-between;gap:12px;border-top:1px solid var(--line);padding:10px 0}
     .row:first-child{border-top:0}
     .venue-body>.row{margin-top:auto}
-    .card-actions{display:flex;gap:10px;margin-top:12px}
-    .card-actions .btn{flex:1}
+    .card-actions{display:grid;grid-template-columns:minmax(0,1.18fr) minmax(112px,.82fr);gap:10px;margin-top:14px}
+    .card-actions .btn{min-width:0;min-height:44px;padding:0 14px;border-radius:14px;font-size:14px;line-height:1;white-space:nowrap}
+    .card-actions .btn.primary{box-shadow:0 10px 22px rgba(184,95,77,.16)}
+    .card-actions .btn:not(.primary){background:rgba(255,255,255,.76)}
     .empty{
       display:none;border:1px dashed #ddc5bc;border-radius:18px;padding:28px;text-align:center;
       color:var(--muted);background:#fff;
@@ -598,7 +600,8 @@
       .gallery-slide{height:300px}
       .thumbs{display:none}
       .detail-title h2{font-size:34px}
-      .card-actions{flex-direction:column}
+      .card-actions{grid-template-columns:1fr 1fr;gap:8px}
+      .card-actions .btn{min-height:42px}
     }
   </style>
 </head>
@@ -1309,7 +1312,7 @@
           <p class="muted">${esc(g.venue.address)}</p>
           <div class="meta"><span class="tag">до ${g.maxCapacity} гостей</span><span class="tag">от ${money(g.minPrice)} / час</span><span class="tag">${esc(roomLine)}</span></div>
           <div class="row"><span class="muted">Ближайшие окна</span><strong>${g.windows.join(", ")||"нет"}</strong></div>
-          <div class="card-actions"><button class="btn primary" data-open-room="${g.primary.id}" type="button">Смотреть комнаты</button><button class="btn" data-fav="${g.primary.id}" type="button">${fav?"В избранном":"В избранное"}</button></div>
+          <div class="card-actions"><button class="btn primary" data-open-room="${g.primary.id}" type="button">Смотреть</button><button class="btn" data-fav="${g.primary.id}" type="button">${fav?"Сохранено":"Избранное"}</button></div>
         </div>
       </article>`;
     }

@@ -945,8 +945,9 @@
     const $=id=>document.getElementById(id);
     const cities=["Воронеж","Москва","Санкт-Петербург","Краснодар"];
     const times=[...Array.from({length:14},(_,i)=>`${String(i+10).padStart(2,"0")}:00`),"00:00","01:00","02:00","03:00","04:00","05:00"];
-    const store={accounts:"rooms_accounts_v30",session:"rooms_session_v30",bookings:"rooms_bookings_v30",favorites:"rooms_favorites_v30",reviews:"rooms_reviews_v30",partner:"rooms_partner_v30",partnerAuth:"rooms_partner_auth_v30",partnerData:"rooms_partner_data_v30",venueAdmin:"rooms_venue_admin_v30",partnerNotice:"rooms_partner_notice_v30",userNotice:"rooms_user_notice_v30",support:"rooms_support_v30",activity:"rooms_activity_v30",moderation:"rooms_moderation_v30",chat:"rooms_chat_v30"};
+    const store={accounts:"rooms_accounts_v30",session:"rooms_session_v30",bookings:"rooms_bookings_v30",favorites:"rooms_favorites_v30",reviews:"rooms_reviews_v30",partner:"rooms_partner_v30",partnerAuth:"rooms_partner_auth_v30",partnerData:"rooms_partner_data_v30",venueAdmin:"rooms_venue_admin_v30",partnerNotice:"rooms_partner_notice_v30",userNotice:"rooms_user_notice_v30",support:"rooms_support_v30",activity:"rooms_activity_v30",moderation:"rooms_moderation_v30",chat:"rooms_chat_v30",payouts:"rooms_payouts_v30"};
     const adminAccess={login:"admin@rooms.ru",password:"rooms2026"};
+    const accountantAccess={login:"accountant@rooms.ru",password:"rooms2026"};
     const day=n=>{const d=new Date();d.setHours(12,0,0,0);d.setDate(d.getDate()+n);return d.toISOString().slice(0,10)};
     const today=day(0);
     const img=name=>`assets/${name}.jpg`;
@@ -1030,11 +1031,19 @@
     function accounts(){return read(store.accounts,[])}
     function current(){const s=read(store.session,null);return s?accounts().find(a=>a.id===s.id):null}
     function isAdmin(acc=current()){return acc?.role==="admin"}
+    function isAccountant(acc=current()){return acc?.role==="accountant"}
     function isAdminLogin(login,password){return String(login||"").trim().toLowerCase()===adminAccess.login&&password===adminAccess.password}
+    function isAccountantLogin(login,password){return String(login||"").trim().toLowerCase()===accountantAccess.login&&password===accountantAccess.password}
     function ensureAdminAccount(){
       const list=accounts();let acc=list.find(a=>a.role==="admin");
       if(acc)return acc;
       acc={id:"U-admin",name:"Игорь",email:adminAccess.login,phone:"79000000000",city:"Воронеж",password:adminAccess.password,role:"admin"};
+      write(store.accounts,[...list,acc]);return acc;
+    }
+    function ensureAccountantAccount(){
+      const list=accounts();let acc=list.find(a=>a.role==="accountant");
+      if(acc)return acc;
+      acc={id:"U-accountant",name:"Бухгалтер Rooms",email:accountantAccess.login,phone:"",city:"Воронеж",password:accountantAccess.password,role:"accountant"};
       write(store.accounts,[...list,acc]);return acc;
     }
     function favorites(){return new Set(read(store.favorites,[]))}
@@ -1218,13 +1227,30 @@
       const total=savedTotal||base+extras,prepay=Number(b.prepay)||Math.ceil(total*.3),remaining=Math.max(0,total-prepay);
       return {base,mainBase,extraRoomsTotal,extras,total,prepay,remaining,hourPrice,hasServices:extras>0,hasExtraRooms:extraRooms.length>0};
     }
+    const roomsCommissionRate=.15;
+    function bookingSettlement(b){
+      const finance=bookingFinance(b),commission=Math.round(finance.total*roomsCommissionRate),partnerAmount=Math.max(0,finance.prepay-commission);
+      return {...finance,commission,partnerAmount};
+    }
+    function payoutBatches(){return read(store.payouts,[])}
+    function savePayoutBatches(list){write(store.payouts,list.slice(0,100))}
+    function payoutStatusLabel(status){return ({sent:"направлена",paid:"выплачена",cancelled:"отменена"})[status]||"ожидает формирования"}
+    function payoutStatusClass(status){return status==="paid"?"paid":status==="cancelled"?"cancelled":"review"}
+    function payoutForBooking(id){return payoutBatches().find(x=>(x.bookingIds||[]).includes(id)&&x.status!=="cancelled")||null}
+    function bookingVenueId(b){return rooms.find(r=>r.id===b?.roomId)?.venue||"unknown"}
+    function partnerHasRequisites(data=partnerData()){return /^\d{20}$/.test(String(data.venue.settlementAccount||"").replace(/\D/g,""))&&/^\d{9}$/.test(String(data.venue.bik||"").replace(/\D/g,""))&&String(data.venue.bankName||"").trim().length>2}
+    function bookingReadyForPayout(b){return isPrepayPaid(b)&&["visited","completed"].includes(effectiveBookingStatus(b))&&!openSupportForBooking(b.id).length&&!payoutForBooking(b.id)}
+    function payoutStats(list=[]){
+      return list.reduce((acc,b)=>{if(!isPrepayPaid(b))return acc;const amount=bookingSettlement(b).partnerAmount,batch=payoutForBooking(b.id);if(batch?.status==="paid")acc.paid+=amount;else if(batch?.status==="sent")acc.sent+=amount;else if(bookingReadyForPayout(b))acc.ready+=amount;else acc.expected+=amount;return acc},{expected:0,ready:0,sent:0,paid:0});
+    }
+    function nextMondayLabel(){const d=new Date();d.setHours(12,0,0,0);const add=(8-d.getDay())%7||7;d.setDate(d.getDate()+add);return new Intl.DateTimeFormat("ru-RU",{day:"numeric",month:"long"}).format(d)}
     function bookingFinanceHtml(b){
       const f=bookingFinance(b),services=b.services||[],method=paymentMethodLabel(bookingPaymentMethod(b));
       return `<div class="booking-finance"><div class="row"><span class="muted">${esc(b.room||"Основное помещение")} · ${Number(b.hours)||0} ч × ${money(f.hourPrice)}</span><strong>${money(f.mainBase)}</strong></div>${(b.extraRooms||[]).map(x=>`<div class="row"><span class="muted">${esc(x.title)} · ${Number(b.hours)||0} ч × ${money(x.price)}</span><strong>+ ${money((Number(x.price)||0)*(Number(b.hours)||0))}</strong></div>`).join("")}${services.map(x=>`<div class="row"><span class="muted">${esc(x.name)}</span><strong>+ ${money(x.price)}</strong></div>`).join("")}<div class="row finance-total"><span>Итого</span><strong>${money(f.total)}</strong></div><div class="row"><span class="muted">Предоплата 30%</span><strong>${money(f.prepay)}</strong></div><div class="row"><span class="muted">Остаток на месте · ${esc(method)}</span><strong>${money(f.remaining)}</strong></div></div>`;
     }
     function bookingFinanceStats(list=[]){
       const active=list.filter(b=>!["cancelled","expired"].includes(effectiveBookingStatus(b)));
-      const totals=active.reduce((acc,b)=>{const f=bookingFinance(b);acc.total+=f.total;acc.extras+=f.extras;acc.prepay+=f.prepay;if(f.hasServices)acc.withServices++;return acc},{total:0,extras:0,prepay:0,withServices:0});
+      const totals=active.reduce((acc,b)=>{const f=bookingSettlement(b);acc.total+=f.total;acc.extras+=f.extras;acc.prepay+=f.prepay;acc.commission+=f.commission;acc.partnerAmount+=f.partnerAmount;if(f.hasServices)acc.withServices++;return acc},{total:0,extras:0,prepay:0,commission:0,partnerAmount:0,withServices:0});
       return {...totals,count:active.length,avg:active.length?Math.round(totals.total/active.length):0};
     }
     function bookingCountWord(n){
@@ -1302,7 +1328,7 @@
     function defaultPartnerData(){
       const v=venues.find(x=>x.id==="kids-loft");
       const roomMap=Object.fromEntries(rooms.filter(r=>r.venue==="kids-loft").map(r=>[r.id,{id:r.id,type:r.type,status:r.status||"published",title:r.title,subtitle:r.subtitle,capacity:r.capacity,price:r.price,min:r.min,bufferEnabled:false,buffer:30,desc:r.desc,rules:r.rules,promo:r.promo||"",images:r.images,features:r.features,tags:r.tags,services:roomServices(r),work:r.work}]));
-      return {venue:{id:"kids-loft",city:v.city,title:v.title,address:v.address,type:"Детский лофт",roomCount:2,contact:"Менеджер Kids Loft",phone:"+7 900 000-00-00",email:"manager@kids-loft.ru",paymentMethods:["card","cash"],cabinetStatus:"active",publicationStatus:"published",work:[10,24],weekSchedule:defaultWeekSchedule([10,24]),specialHours:{},rules:"Алкоголь и кальян не подходят для детских мероприятий. Еду и торт можно согласовать заранее.",about:v.about,image:v.image},rooms:roomMap,busy:{},manualBusy:{}};
+      return {venue:{id:"kids-loft",city:v.city,title:v.title,address:v.address,type:"Детский лофт",roomCount:2,contact:"Менеджер Kids Loft",phone:"+7 900 000-00-00",email:"manager@kids-loft.ru",bankName:"",settlementAccount:"",bik:"",paymentMethods:["card","cash"],cabinetStatus:"active",publicationStatus:"published",work:[10,24],weekSchedule:defaultWeekSchedule([10,24]),specialHours:{},rules:"Алкоголь и кальян не подходят для детских мероприятий. Еду и торт можно согласовать заранее.",about:v.about,image:v.image},rooms:roomMap,busy:{},manualBusy:{}};
     }
     function partnerData(){
       const base=defaultPartnerData(),saved=read(store.partnerData,{})||{},mergedRooms={...base.rooms};
@@ -1553,12 +1579,12 @@
       const ids=scope==="partner"?partnerRoomIds():null;
       const rows=(scope==="partner"?partnerBookings(ids):adminBookings()).map(b=>{
         const status=effectiveBookingStatus(b),publicPhone=scope==="admin"||hasPaymentRecord(b)?b.phone:"скрыт до предоплаты";
-        const finance=bookingFinance(b);
+        const finance=bookingSettlement(b),batch=payoutForBooking(b.id);
         const last=bookingHistory(b)[0],lastAction=last?`${historyActorLabel(last.actor)}: ${last.title}${last.details?` · ${last.details}`:""}`:"";
-        const base=[b.name,publicPhone,b.date,b.time,b.hours,b.room,extraRoomsText(b.extraRooms||[]),eventLabel(b.eventType)||"",b.eventName||"",bookingServicesText(b.services||[]),finance.mainBase,finance.extraRoomsTotal,finance.extras,finance.total,finance.remaining,paymentMethodLabel(bookingPaymentMethod(b)),statusLabel(status),lastAction,b.comment||"",b.internalNote||"",b.policy||bookingPolicyLine(b)||""];
-        return scope==="admin"?[b.venue,b.city,...base,finance.prepay,paymentStatusLabel(b.paymentStatus)||b.paymentStatus||""]:base;
+        const base=[b.name,publicPhone,b.date,b.time,b.hours,b.room,extraRoomsText(b.extraRooms||[]),eventLabel(b.eventType)||"",b.eventName||"",bookingServicesText(b.services||[]),finance.mainBase,finance.extraRoomsTotal,finance.extras,finance.total,finance.remaining,paymentMethodLabel(bookingPaymentMethod(b)),statusLabel(status),lastAction,b.comment||"",b.internalNote||"",b.policy||bookingPolicyLine(b)||"",finance.partnerAmount,batch?payoutStatusLabel(batch.status):"не сформирована"];
+        return scope==="admin"?[b.venue,b.city,...base,finance.prepay,paymentStatusLabel(b.paymentStatus)||b.paymentStatus||"",finance.commission]:base;
       });
-      const head=scope==="admin"?["Площадка","Город","Клиент","Телефон","Дата","Время","Часы","Основное помещение","Дополнительные помещения","Событие","Название события","Услуги","Основное помещение, сумма","Дополнительные помещения, сумма","Сумма услуг","Итого","Остаток на месте","Способ оплаты остатка","Статус","Последнее действие","Комментарий","Внутренняя заметка","Правила","Предоплата","Статус оплаты"]:["Клиент","Телефон","Дата","Время","Часы","Основное помещение","Дополнительные помещения","Событие","Название события","Услуги","Основное помещение, сумма","Дополнительные помещения, сумма","Сумма услуг","Итого","Остаток на месте","Способ оплаты остатка","Статус","Последнее действие","Комментарий","Внутренняя заметка","Правила"];
+      const head=scope==="admin"?["Площадка","Город","Клиент","Телефон","Дата","Время","Часы","Основное помещение","Дополнительные помещения","Событие","Название события","Услуги","Основное помещение, сумма","Дополнительные помещения, сумма","Сумма услуг","Итого","Остаток на месте","Способ оплаты остатка","Статус","Последнее действие","Комментарий","Внутренняя заметка","Правила","К выплате партнёру","Статус выплаты","Предоплата","Статус оплаты","Комиссия Rooms"]:["Клиент","Телефон","Дата","Время","Часы","Основное помещение","Дополнительные помещения","Событие","Название события","Услуги","Основное помещение, сумма","Дополнительные помещения, сумма","Сумма услуг","Итого","Остаток на месте","Способ оплаты остатка","Статус","Последнее действие","Комментарий","Внутренняя заметка","Правила","К выплате партнёру","Статус выплаты"];
       downloadCsv(`rooms-${scope}-bookings-${today}.csv`,[head,...rows]);
       logActivity("export",scope==="admin"?"Экспорт админки":"Экспорт партнёра",`${rows.length} строк`);
       toast("Выгрузка подготовлена в CSV, файл откроется в Excel.");
@@ -1714,7 +1740,7 @@
       if(status!=="pending")base.unshift({id:`H-${b.id}-status`,type:"status",title:`Текущий статус: ${statusLabel(status)}`,details:prepayText(b),actor:"system",visibility:"all",created:b.paidAt||b.confirmedAt||b.updatedAt||b.created||new Date().toISOString()});
       return base;
     }
-    function historyActorLabel(actor){return ({client:"клиент",partner:"партнёр",admin:"админ",system:"система"})[actor]||actor||"система"}
+    function historyActorLabel(actor){return ({client:"клиент",partner:"партнёр",admin:"админ",accountant:"бухгалтер",system:"система"})[actor]||actor||"система"}
     function appendBookingHistory(b,type,title,details="",actor="system",visibility="all"){
       return {...b,history:[historyEntry(type,title,details,actor,visibility),...bookingHistory(b)].slice(0,30)};
     }
@@ -2071,7 +2097,7 @@
       const acc=current();if(acc&&!isAdmin(acc)&&phone(acc.phone)===key)showUserChatNotice(b,preview);updateNoticeBadge();
     }
     function renderUserNotifications(){
-      const acc=current();if(!acc||isAdmin(acc))return renderAuth();
+      const acc=current();if(!acc||isAdmin(acc)||isAccountant(acc))return renderAuth();
       const items=currentUserNoticeItems();
       markCurrentUserNoticesRead();
       const rows=items.map(x=>{const chat=x.status==="chat",target=chat?`chat:${x.bookingId}|profile`:x.bookingId,details=chat?(x.preview||"Площадка ответила в чате"):`${x.venue||"Rooms"} · ${x.room||"помещение"} · ${x.date||""} ${x.time?`в ${x.time}`:""}`;return `<button class="notification-item ${x.read?"":"unread"}" data-user-notice="${esc(target)}" type="button"><span class="notice-dot"></span><span><strong>${esc(userNoticeTitle(x.status))}</strong><span>${esc(details)}</span></span><time>${new Date(x.created).toLocaleString("ru-RU",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})}</time></button>`}).join("");
@@ -2090,6 +2116,7 @@
       if(E.partnerAlert.dataset.noticeTarget==="profile-chat")renderBookingChat(`${E.partnerAlert.dataset.bookingId}|profile`);
       else if(E.partnerAlert.dataset.noticeTarget==="profile")openProfileBookings();
       else if(E.partnerAlert.dataset.noticeTarget==="partner-chat")renderBookingChat(`${E.partnerAlert.dataset.bookingId}|partner`);
+      else if(E.partnerAlert.dataset.noticeTarget==="partner-payout")openPartnerPayouts();
       else if(E.partnerAlert.dataset.noticeTarget==="partner-moderation")openPartnerModeration();
       else openPartnerBookings();
     }
@@ -2153,6 +2180,12 @@
       savePartnerNotice({...prev,unread:(prev.unread||0)+1,lastId:b.id,type:"chat",updated:created,items:[item,...(Array.isArray(prev.items)?prev.items:[])].slice(0,40)});
       if(read(store.partnerAuth,null))showPartnerChatNotice(b,preview);
     }
+    function notifyPartnerPayout(batch){
+      const data=partnerData();if(batch.venueId!==data.venue.id)return;
+      const prev=partnerNotice(),created=new Date().toISOString(),type=batch.status==="paid"?"payout_paid":"payout_sent",item={id:`PN-${Date.now().toString(36)}`,payoutId:batch.id,type,room:batch.venueTitle,detail:money(batch.amount),created,read:false};
+      savePartnerNotice({...prev,unread:(prev.unread||0)+1,type,updated:created,items:[item,...(Array.isArray(prev.items)?prev.items:[])].slice(0,40)});
+      if(read(store.partnerAuth,null)){E.partnerAlert.dataset.noticeTarget="partner-payout";E.partnerAlert.innerHTML=`<div class="notice-row"><span class="notice-dot"></span><div><span class="kicker">${batch.status==="paid"?"Выплата выполнена":"Выплата направлена"}</span><strong>${money(batch.amount)}</strong><span>${esc(batch.venueTitle)} · нажмите, чтобы открыть баланс</span></div></div>`;E.partnerAlert.classList.add("show");clearTimeout(window.__partnerNoticeTimer);window.__partnerNoticeTimer=setTimeout(()=>E.partnerAlert.classList.remove("show"),9000);playPartnerClick()}
+    }
     function notifyPartnerModeration(item,status){
       const prev=partnerNotice(),created=new Date().toISOString(),type=status==="approved"?"moderation_approved":"moderation_rejected";
       const noticeItem={id:`PN-${Date.now().toString(36)}`,moderationId:item.id,type,room:item.targetTitle||"Карточка площадки",detail:moderationStatusLabel(status),created,read:false};
@@ -2181,12 +2214,13 @@
       if((partnerData().venue.cabinetStatus||"active")==="paused")return renderPartnerPaused();
       const items=partnerNoticeItems();
       markPartnerNoticesRead();
-      const rows=items.map(x=>{const moderation=x.type==="moderation_approved"||x.type==="moderation_rejected",chat=x.type==="chat",title=x.type==="payment"?"Предоплата внесена":chat?"Новое сообщение клиента":x.type==="moderation_approved"?"Изменения одобрены":x.type==="moderation_rejected"?"Изменения отклонены":"Новая заявка",target=moderation?`moderation:${x.moderationId}`:chat?`chat:${x.bookingId}|partner`:x.bookingId,details=moderation?`${x.room||"Карточка площадки"} · ${x.detail||"решение принято"}`:chat?(x.preview||"Клиент написал в чате"):`${x.room||"помещение"} · ${x.name||"клиент"} · ${x.date||""} ${x.time?`в ${x.time}`:""}`;return `<button class="notification-item ${x.read?"":"unread"}" data-partner-notice="${esc(target)}" type="button"><span class="notice-dot"></span><span><strong>${title}</strong><span>${esc(details)}</span></span><time>${new Date(x.created).toLocaleString("ru-RU",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})}</time></button>`}).join("");
+      const rows=items.map(x=>{const moderation=x.type==="moderation_approved"||x.type==="moderation_rejected",chat=x.type==="chat",payout=x.type==="payout_sent"||x.type==="payout_paid",title=x.type==="payment"?"Предоплата внесена":chat?"Новое сообщение клиента":x.type==="payout_paid"?"Выплата выполнена":x.type==="payout_sent"?"Выплата направлена":x.type==="moderation_approved"?"Изменения одобрены":x.type==="moderation_rejected"?"Изменения отклонены":"Новая заявка",target=moderation?`moderation:${x.moderationId}`:chat?`chat:${x.bookingId}|partner`:payout?`payout:${x.payoutId}`:x.bookingId,details=moderation?`${x.room||"Карточка площадки"} · ${x.detail||"решение принято"}`:chat?(x.preview||"Клиент написал в чате"):payout?`${x.room||"Площадка"} · ${x.detail||"сумма уточняется"}`:`${x.room||"помещение"} · ${x.name||"клиент"} · ${x.date||""} ${x.time?`в ${x.time}`:""}`;return `<button class="notification-item ${x.read?"":"unread"}" data-partner-notice="${esc(target)}" type="button"><span class="notice-dot"></span><span><strong>${title}</strong><span>${esc(details)}</span></span><time>${new Date(x.created).toLocaleString("ru-RU",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})}</time></button>`}).join("");
       openModal(`<div class="admin-item-head"><div><span class="kicker">Кабинет партнёра</span><h2 style="margin:4px 0 6px">Уведомления площадки</h2><p class="muted" style="margin:0">Заявки, сообщения, предоплаты и решения Rooms по изменениям карточки.</p></div><button class="btn" data-partner-back type="button">Назад</button></div><div class="notification-list">${rows||`<div class="empty" style="display:block">Уведомлений пока нет.</div>`}</div>`,true);
     }
     function openPartnerNoticeBooking(id){
       if(String(id||"").startsWith("moderation:")){openPartnerModeration();return}
       if(String(id||"").startsWith("chat:")){renderBookingChat(String(id).slice(5));return}
+      if(String(id||"").startsWith("payout:")){openPartnerPayouts();return}
       const b=read(store.bookings,[]).find(x=>x.id===id);
       if(!b)return toast("Заявка из уведомления больше недоступна.");
       partnerBookingFilter=partnerBookingGroup(b);
@@ -2197,6 +2231,9 @@
       E.partnerAlert.classList.remove("show");markPartnerNoticesRead();
       if(!read(store.partnerAuth,null)){renderPartnerLogin();return}
       renderPartnerCabinet();requestAnimationFrame(()=>document.querySelector("[data-partner-moderation]")?.scrollIntoView({behavior:"smooth",block:"center"}));
+    }
+    function openPartnerPayouts(){
+      E.partnerAlert.classList.remove("show");markPartnerNoticesRead();if(!read(store.partnerAuth,null))return renderPartnerLogin();renderPartnerCabinet();requestAnimationFrame(()=>document.querySelector("[data-partner-payouts]")?.scrollIntoView({behavior:"smooth",block:"center"}));
     }
     function galleryWrap(node=E.modal){return node.querySelector("[data-gallery]")}
     function markGallery(wrap){
@@ -2348,6 +2385,51 @@
       const finance=bookingFinance(b),policy=bookingPolicyLine(b),supportOpen=openSupportForBooking(b.id).length,supportTag=supportOpen?`<span class="tag warn">поддержка · ${supportOpen}</span>`:"";
       return `<article class="admin-item" data-booking-card="${esc(b.id)}"><div class="admin-item-head"><div><h4>${esc(b.venue)} · ${esc(b.room)}${b.extraRooms?.length?` + ${b.extraRooms.length}`:""}</h4><p class="muted" style="margin:0">${bookingContactLine(b,area)} · ${esc(b.date)} в ${esc(b.time)} · ${b.hours} ч · ${b.guests} гостей</p></div><span class="status ${esc(status)}">${statusLabel(status)}</span></div>${bookingFlow(status)}<div class="admin-meta">${priorityTags}<span class="tag">${money(finance.total)}</span><span class="tag">${prepayText(b)}</span>${paymentMetaTags(b)}${eventTags}${extraRoomTags}${serviceTags}${supportTag}<span class="tag">${windows} общих окон</span>${p?`<span class="tag">предложено ${esc(p.date)} в ${esc(p.time)} на ${p.hours} ч</span>`:""}</div>${bookingFinanceHtml(b)}${policy?`<p class="policy-note">Правила: ${esc(policy)}</p>`:""}${b.comment?`<p class="muted" style="margin:10px 0 0">Комментарий: ${esc(b.comment)}</p>`:""}${cancelMeta(b)}${bookingHistoryHtml(b,area)}${bookingInternalNote(b,area)}<div class="admin-actions">${bookingActions(b,area)}${supportButton(b,area)}</div></article>`;
     }
+    function payoutBookingCard(b){
+      const s=bookingSettlement(b),batch=payoutForBooking(b.id);
+      return `<article class="admin-item"><div class="admin-item-head"><div><h4>${esc(b.venue)} · ${esc(b.room)}</h4><p class="muted" style="margin:0">${esc(b.date)} в ${esc(b.time)} · ${b.hours} ч · ${esc(b.id)}</p></div><span class="status ${batch?payoutStatusClass(batch.status):"review"}">${batch?payoutStatusLabel(batch.status):"готово к выплате"}</span></div><div class="admin-meta"><span class="tag">бронь ${money(s.total)}</span><span class="tag">предоплата ${money(s.prepay)}</span><span class="tag">комиссия ${money(s.commission)}</span><span class="tag ok">партнёру ${money(s.partnerAmount)}</span>${openSupportForBooking(b.id).length?`<span class="tag warn">есть обращение</span>`:""}</div></article>`;
+    }
+    function payoutBatchCard(batch,area="accountant"){
+      const bookings=storedBookings().filter(b=>(batch.bookingIds||[]).includes(b.id));
+      const action=area==="accountant"&&batch.status==="sent"?`<button class="btn primary" data-payout-paid="${batch.id}" type="button">Отметить выплаченной</button>`:"";
+      return `<article class="admin-item"><div class="admin-item-head"><div><h4>${esc(batch.venueTitle)} · ${money(batch.amount)}</h4><p class="muted" style="margin:0">${bookings.length} ${bookingCountWord(bookings.length)} · создано ${new Date(batch.created).toLocaleString("ru-RU",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})}</p></div><span class="status ${payoutStatusClass(batch.status)}">${payoutStatusLabel(batch.status)}</span></div><div class="admin-meta"><span class="tag">предоплаты ${money(batch.prepay)}</span><span class="tag">комиссия ${money(batch.commission)}</span><span class="tag ok">к выплате ${money(batch.amount)}</span>${batch.paidAt?`<span class="tag">выплачено ${new Date(batch.paidAt).toLocaleDateString("ru-RU")}</span>`:""}</div>${action?`<div class="admin-actions">${action}</div>`:""}</article>`;
+    }
+    function createPayoutBatches(){
+      if(!isAccountant()&&!isAdmin())return toast("Формирование выплат доступно бухгалтеру Rooms.");
+      const ready=storedBookings().filter(bookingReadyForPayout),data=partnerData();
+      if(!ready.length)return toast("Нет завершённых броней, готовых к выплате.");
+      if(!partnerHasRequisites(data))return toast("Партнёр ещё не заполнил банк и расчётный счёт.");
+      const groups=new Map();
+      ready.forEach(b=>{const venueId=bookingVenueId(b);if(venueId!==data.venue.id)return;const item=groups.get(venueId)||{venueId,venueTitle:b.venue,bookings:[]};item.bookings.push(b);groups.set(venueId,item)});
+      if(!groups.size)return toast("Для готовых броней пока нет проверенных реквизитов партнёров.");
+      const created=new Date().toISOString(),batches=[...groups.values()].map(group=>{const sums=group.bookings.reduce((acc,b)=>{const s=bookingSettlement(b);acc.prepay+=s.prepay;acc.commission+=s.commission;acc.amount+=s.partnerAmount;return acc},{prepay:0,commission:0,amount:0});return {id:`PAY-${Date.now().toString(36)}-${group.venueId}`,venueId:group.venueId,venueTitle:group.venueTitle,bookingIds:group.bookings.map(b=>b.id),...sums,status:"sent",created,sentAt:created}});
+      savePayoutBatches([...batches,...payoutBatches()]);batches.forEach(notifyPartnerPayout);logActivity("payout_batch","Бухгалтер направил выплаты",`${batches.length} пакетов · ${money(batches.reduce((sum,x)=>sum+x.amount,0))}`,"accountant");renderAccountantDashboard(true);toast("Выплаты направлены партнёрам.");
+    }
+    function completePayoutBatch(id){
+      if(!isAccountant()&&!isAdmin())return toast("Изменение выплаты доступно бухгалтеру Rooms.");
+      let updated=null,list=payoutBatches().map(x=>x.id===id&&x.status==="sent"?(updated={...x,status:"paid",paidAt:new Date().toISOString()}):x);
+      if(!updated)return toast("Выплата не найдена или уже закрыта.");
+      savePayoutBatches(list);logActivity("payout_paid","Выплата отмечена выполненной",`${updated.venueTitle} · ${money(updated.amount)}`,"accountant");notifyPartnerPayout(updated);renderAccountantDashboard(true);toast("Выплата отмечена выполненной.");
+    }
+    function bookingEndMs(b){
+      if(!b?.date||!b?.time)return 0;const room=rooms.find(r=>r.id===b.roomId),base=new Date(`${b.date}T00:00:00`),startHour=room?slotHour(room,b.time,b.date):hour(b.time);return base.getTime()+(startHour+Number(b.hours||1))*3600000;
+    }
+    function autoCompleteBookings(){
+      const source=storedBookings();if(!source.length)return;
+      const completed=[];let changed=false,list=source.map(b=>{if(effectiveBookingStatus(b)!=="paid"||Date.now()<bookingEndMs(b)+24*3600000||openSupportForBooking(b.id).length)return b;changed=true;const next=appendBookingHistory({...b,status:"completed",completedAt:new Date().toISOString(),completedAutomatically:true},"complete","Бронь завершена автоматически","Прошло 24 часа после мероприятия, открытых обращений нет.","system");completed.push(next);return next});
+      if(!changed)return;saveAdminBookings(list);completed.forEach(b=>{logActivity("booking_complete","Бронь завершена автоматически",`${b.id} · ${b.room}`,"system");notifyUserBooking(b,"completed")});
+    }
+    function renderAccountantDashboard(keep=false){
+      const acc=current();if(!isAccountant(acc)&&!isAdmin(acc))return renderAuth();
+      const top=E.modalBox.scrollTop,books=storedBookings(),ready=books.filter(bookingReadyForPayout),stats=payoutStats(books),batches=payoutBatches(),data=partnerData(),requisites=partnerHasRequisites(data);
+      const readyRows=ready.map(payoutBookingCard).join(""),batchRows=batches.map(x=>payoutBatchCard(x,"accountant")).join("");
+      openModal(`<div class="admin-dashboard"><div class="admin-title"><span class="kicker">Бухгалтерия Rooms</span><h2>Выплаты партнёрам</h2><p class="muted">Предоплата 30%, комиссия Rooms 15% от полной суммы брони. Выплаты формируются по завершённым мероприятиям без открытых обращений.</p></div><div class="dash-grid"><div class="dash-card"><span class="muted">Ожидается</span><strong>${money(stats.expected)}</strong></div><div class="dash-card"><span class="muted">Готово</span><strong>${money(stats.ready)}</strong></div><div class="dash-card"><span class="muted">Направлено</span><strong>${money(stats.sent)}</strong></div><div class="dash-card"><span class="muted">Выплачено</span><strong>${money(stats.paid)}</strong></div></div><div class="chips"><button class="btn primary" data-create-payouts type="button" ${ready.length&&requisites?"":"disabled"}>Направить выплаты · ${money(stats.ready)}</button><span class="muted">Ближайший плановый день: понедельник, ${nextMondayLabel()}.</span></div>${!requisites?`<div class="chat-guard">Партнёр Kids Loft не заполнил банк и 20-значный расчётный счёт. Формирование выплаты заблокировано.</div>`:""}<div class="admin-grid"><section class="admin-panel"><h3>Готово к выплате</h3><div class="admin-list">${readyRows||`<div class="empty" style="display:block">Завершённых броней для новой выплаты пока нет.</div>`}</div></section><aside class="admin-panel"><h3>История выплат</h3><div class="admin-list">${batchRows||`<div class="empty" style="display:block">Выплаты ещё не формировались.</div>`}</div></aside></div><div class="chips">${isAdmin(acc)?`<button class="btn soft" data-admin-open type="button">Вернуться в админку</button>`:""}<button class="btn" data-logout type="button">Выйти</button></div></div>`,false,!keep);
+      if(keep)requestAnimationFrame(()=>E.modalBox.scrollTop=top);
+    }
+    function partnerPayoutPanel(books,data){
+      const stats=payoutStats(books),batches=payoutBatches().filter(x=>x.venueId===data.venue.id),ready=books.filter(bookingReadyForPayout);
+      return `<div class="partner-editor" data-partner-payouts><div class="admin-item-head"><div><h3>Баланс и выплаты</h3><p class="muted" style="margin:0">Rooms удерживает комиссию 15% из предоплаты. Плановые выплаты отправляются по понедельникам после завершения мероприятия.</p></div><span class="status ${partnerHasRequisites(data)?"paid":"review"}">${partnerHasRequisites(data)?"реквизиты заполнены":"нужны реквизиты"}</span></div><div class="dash-grid" style="margin-top:12px"><div class="dash-card"><span class="muted">Ожидается</span><strong>${money(stats.expected)}</strong></div><div class="dash-card"><span class="muted">Готово</span><strong>${money(stats.ready)}</strong></div><div class="dash-card"><span class="muted">Направлено</span><strong>${money(stats.sent)}</strong></div><div class="dash-card"><span class="muted">Выплачено</span><strong>${money(stats.paid)}</strong></div></div>${!partnerHasRequisites(data)?`<div class="chat-guard">Заполните банк, БИК и расчётный счёт в разделе «Заведение», чтобы бухгалтер мог направить выплату.</div>`:""}<div class="admin-list" style="margin-top:12px">${batches.slice(0,5).map(x=>payoutBatchCard(x,"partner")).join("")||ready.slice(0,5).map(payoutBookingCard).join("")||`<div class="empty" style="display:block">История выплат пока пуста.</div>`}</div></div>`;
+    }
     function renderFavorites(){
       const saved=[...favorites()].map(id=>rooms.find(r=>r.id===id)).filter(Boolean);
       const rows=saved.map(r=>{
@@ -2363,6 +2445,7 @@
     function renderProfile(focusBookings=false){
       const acc=current();if(!acc)return renderAuth();
       if(isAdmin(acc))return renderAdminDashboard();
+      if(isAccountant(acc))return renderAccountantDashboard();
       const fav=favorites(),books=read(store.bookings,[]).filter(b=>phone(b.phone)===phone(acc.phone)),counts={active:0,completed:0,cancelled:0};
       books.forEach(b=>counts[profileBookingGroup(b)]++);
       const filtered=profileBookingFilter==="all"?books:books.filter(b=>profileBookingGroup(b)===profileBookingFilter);
@@ -2376,7 +2459,7 @@
       books.forEach(b=>adminCounts[partnerBookingGroup(b)]++);
       const pending=adminCounts.new,confirmed=adminCounts.payment+adminCounts.booked,visitCount=books.filter(b=>["visited","completed"].includes(effectiveBookingStatus(b))).length;
       const paidBooks=books.filter(isPrepayPaid),refundPendingBooks=books.filter(b=>b.paymentStatus==="refund_pending"),refundedBooks=books.filter(b=>b.paymentStatus==="refunded");
-      const adminFinance=bookingFinanceStats(books);
+      const adminFinance=bookingFinanceStats(books),adminPayouts=payoutStats(storedBookings());
       const adminBaseBooks=adminBookingFilter==="all"?books:books.filter(b=>partnerBookingGroup(b)===adminBookingFilter),filteredBooks=sortBookingQueue(filterBookingQueue(books,adminBookingFilter,adminBookingDateFilter,adminBookingEventFilter)),bookingRows=filteredBooks.map(b=>bookingCard(b,"admin")).join("");
       const adminFilters=[["new","Новые",adminCounts.new],["payment","Ждут оплату",adminCounts.payment],["booked","Оплачены",adminCounts.booked],["history","История",adminCounts.history],["all","Все",books.length]].map(([id,label,count])=>`<button class="booking-filter ${adminBookingFilter===id?"active":""}" data-admin-booking-filter="${id}" type="button">${label} · ${count}</button>`).join("");
       const adminQueue=bookingQueueControls(adminBaseBooks,"admin",adminBookingDateFilter,adminBookingEventFilter);
@@ -2405,9 +2488,9 @@
         </div>
         <div class="admin-grid">
           <section class="admin-panel"><h3>История действий</h3>${renderActivity(10)}</section>
-          <aside class="admin-panel"><h3>Финансы демо</h3><div class="admin-list"><article class="admin-item"><div class="admin-item-head"><div><h4>Оплаты и возвраты</h4><p class="muted" style="margin:0">Показываем предоплаты, средний чек и вклад допуслуг без публичной экономики сервиса.</p></div></div><div class="admin-meta"><span class="tag ok">${money(paidBooks.reduce((s,b)=>s+bookingFinance(b).prepay,0))} оплат</span><span class="tag">${money(adminFinance.total)} заявок</span><span class="tag">${money(adminFinance.extras)} допуслуг</span><span class="tag warn">${refundPendingBooks.length} ждут возврата</span><span class="tag">${refundedBooks.length} возвратов закрыто</span></div><h4 class="service-sales-title">Популярные допуслуги</h4>${serviceSalesHtml(books)}</article></div></aside>
+          <aside class="admin-panel"><h3>Финансы и выплаты</h3><div class="admin-list"><article class="admin-item"><div class="admin-item-head"><div><h4>Оплаты, комиссия и партнёры</h4><p class="muted" style="margin:0">Внутренняя экономика Rooms не показывается клиентам.</p></div></div><div class="admin-meta"><span class="tag ok">${money(paidBooks.reduce((s,b)=>s+bookingFinance(b).prepay,0))} предоплат</span><span class="tag">${money(adminFinance.commission)} комиссия Rooms</span><span class="tag">${money(adminPayouts.ready)} готово партнёрам</span><span class="tag warn">${money(adminPayouts.sent)} направлено</span><span class="tag">${money(adminPayouts.paid)} выплачено</span><span class="tag warn">${refundPendingBooks.length} ждут возврата</span><span class="tag">${refundedBooks.length} возвратов закрыто</span></div><div class="admin-actions"><button class="btn soft" data-accountant-open type="button">Открыть бухгалтерию</button></div><h4 class="service-sales-title">Популярные допуслуги</h4>${serviceSalesHtml(books)}</article></div></aside>
         </div>
-        <div class="chips"><button class="btn soft" data-partner-login type="button">Открыть кабинет партнёра</button><button class="btn" data-logout type="button">Выйти</button></div>
+        <div class="chips"><button class="btn soft" data-accountant-open type="button">Бухгалтерия</button><button class="btn soft" data-partner-login type="button">Открыть кабинет партнёра</button><button class="btn" data-logout type="button">Выйти</button></div>
       </div>`,false,!keep);
       if(keep)requestAnimationFrame(()=>E.modalBox.scrollTop=top);
     }
@@ -2437,6 +2520,7 @@
         <div class="partner-title"><span class="kicker">Кабинет партнёра</span><h2>${esc(data.venue.title)}</h2><p class="muted">Здесь площадка редактирует информацию о заведении, помещениях внутри него и отмечает занятость. Занятые часы сразу пропадают из свободных окон для клиента.</p></div>
         <div class="dash-grid"><div class="dash-card"><span class="muted">Заявки</span><strong>${books.length}</strong></div><div class="dash-card"><span class="muted">Средний чек</span><strong>${money(partnerFinance.avg)}</strong></div><div class="dash-card"><span class="muted">Допуслуги</span><strong>${money(partnerFinance.extras)}</strong></div><div class="dash-card"><span class="muted">В каталоге</span><strong>${publishedIds.length}</strong></div></div>
         <div class="chips"><button class="btn soft" data-partner-notifications type="button">Уведомления${Number(partnerNotice().unread||0)?` · ${Number(partnerNotice().unread)}`:""}</button><button class="btn soft" data-export="partner" type="button">Экспорт моих заявок CSV</button>${pendingModeration?`<span class="status review">На проверке · ${pendingModeration}</span>`:""}<span class="muted">${publicationStatusLabel(data.venue.publicationStatus)} · ${cabinetStatusLabel(data.venue.cabinetStatus)} · ${esc(data.venue.type||"Тип площадки не указан")} · ${ids.length} помещений · занято вручную ${busyTotal} · занято заявками ${bookedTotal}</span></div>
+        ${partnerPayoutPanel(books,data)}
         <div class="partner-editor" data-partner-moderation><div class="admin-item-head"><div><h3>Изменения карточки</h3><p class="muted" style="margin:0">Цена, описание, правила, акции, способы оплаты и фотографии публикуются после проверки Rooms. Расписание и занятость обновляются сразу.</p></div><span class="status ${pendingModeration?"review":"paid"}">${pendingModeration?`${pendingModeration} на проверке`:"нет ожидающих"}</span></div><div class="admin-list">${partnerModeration.slice(0,5).map(x=>moderationCard(x,"partner")).join("")||`<div class="empty" style="display:block">Отправленных изменений пока нет.</div>`}</div></div>
         <div class="partner-editor" data-partner-bookings><div class="admin-item-head"><div><h3>Заявки по вашим помещениям</h3><p class="muted" style="margin:0">Подтверждение здесь сразу обновляет админку Rooms и календарь доступности.</p></div><span class="status">${partnerCounts.new} новых</span></div><div class="booking-filters">${partnerFilters}</div>${partnerQueue}<div class="admin-list">${bookingRows||`<div class="empty" style="display:block">${partnerEmpty}</div>`}</div></div>
         <div class="partner-editor"><div class="admin-item-head"><div><h3>Допуслуги в заявках</h3><p class="muted" style="margin:0">Какие услуги гости добавляют к брони и на какую сумму.</p></div><span class="status">${money(partnerFinance.extras)}</span></div>${serviceSalesHtml(books)}</div>
@@ -2488,6 +2572,8 @@
         <div class="partner-editor"><h3>История действий</h3>${renderActivity(8)}</div>
         <div class="chips"><button class="btn" data-partner-logout type="button">Выйти из кабинета</button><a class="btn soft" href="#partner" data-close-modal>Форма для новых площадок</a></div>
       </div>`,false,!keep);
+      const venueForm=$("partnerVenueEdit"),emailField=venueForm?.elements.email?.closest(".field");
+      emailField?.insertAdjacentHTML("afterend",`<div class="field full"><label>Реквизиты для выплат</label><span class="muted">Доступны только партнёру, бухгалтеру и администратору Rooms.</span></div><div class="field"><label>Банк</label><input name="bankName" value="${esc(data.venue.bankName||"")}" placeholder="Например, СберБанк"></div><div class="field"><label>БИК</label><input name="bik" inputmode="numeric" maxlength="9" value="${esc(data.venue.bik||"")}" placeholder="9 цифр"></div><div class="field full"><label>Расчётный счёт</label><input name="settlementAccount" inputmode="numeric" maxlength="20" value="${esc(data.venue.settlementAccount||"")}" placeholder="20 цифр"></div>`);
       if(keep)requestAnimationFrame(()=>E.modalBox.scrollTop=top);
     }
     function partnerLogin(form){
@@ -2505,13 +2591,16 @@
       const data=partnerData(),fd=new FormData(form);
       const paymentMethods=fd.getAll("paymentMethods").filter(x=>paymentMethodOptions.some(option=>option.value===x));
       if(!paymentMethods.length)return toast("Выберите хотя бы один способ оплаты остатка на площадке.");
+      const settlementAccount=String(fd.get("settlementAccount")||"").replace(/\D/g,""),bik=String(fd.get("bik")||"").replace(/\D/g,"");
+      if(settlementAccount&&settlementAccount.length!==20)return toast("Расчётный счёт должен содержать 20 цифр.");
+      if(bik&&bik.length!==9)return toast("БИК должен содержать 9 цифр.");
       const weekSchedule={};let invalidDay="";
       weekDayOptions.forEach(([key,label])=>{const enabled=fd.get(`work_${key}_enabled`)==="on",start=Number(fd.get(`work_${key}_start`)),end=Number(fd.get(`work_${key}_end`));if(enabled&&end<=start)invalidDay=label;weekSchedule[key]={enabled,start:Number.isFinite(start)?start:10,end:Number.isFinite(end)?end:24}});
       if(invalidDay)return toast(`Проверьте режим работы: ${invalidDay}. Для закрытия после полуночи выберите время с пометкой +1 день.`);
       const firstOpen=Object.values(weekSchedule).find(x=>x.enabled),work=firstOpen?[firstOpen.start,firstOpen.end]:(data.venue.work||[10,24]);
       const publicBefore={city:data.venue.city,title:data.venue.title,address:data.venue.address,type:data.venue.type,rules:data.venue.rules,about:data.venue.about,paymentMethods:normalizePaymentMethods(data.venue.paymentMethods)};
       const publicAfter={city:String(fd.get("city")||"").trim(),title:String(fd.get("title")||"").trim(),address:String(fd.get("address")||"").trim(),type:String(fd.get("type")||"").trim(),rules:String(fd.get("rules")||"").trim(),about:String(fd.get("about")||"").trim(),paymentMethods};
-      data.venue={...data.venue,roomCount:Number(fd.get("roomCount"))||partnerRoomIds(data).length||1,contact:String(fd.get("contact")||"").trim(),phone:String(fd.get("phone")||"").trim(),email:String(fd.get("email")||"").trim(),work,weekSchedule};
+      data.venue={...data.venue,roomCount:Number(fd.get("roomCount"))||partnerRoomIds(data).length||1,contact:String(fd.get("contact")||"").trim(),phone:String(fd.get("phone")||"").trim(),email:String(fd.get("email")||"").trim(),bankName:String(fd.get("bankName")||"").trim(),settlementAccount,bik,work,weekSchedule};
       savePartnerData(data);
       const request=queueModeration({targetType:"venue",targetId:data.venue.id,targetTitle:publicAfter.title||data.venue.title,before:publicBefore,after:publicAfter});
       logActivity(request?"venue_moderation":"venue_schedule",request?"Партнёр отправил данные площадки на проверку":"Партнёр обновил рабочие данные площадки",`${publicAfter.title||data.venue.title} · ${publicAfter.city||data.venue.city}`,"partner");
@@ -2871,6 +2960,9 @@
       if(isAdminLogin(form.login.value,form.password.value)){
         const acc=ensureAdminAccount();write(store.session,{id:acc.id});hydrate();renderAdminDashboard();toast("Вы вошли в админку Rooms.");return;
       }
+      if(isAccountantLogin(form.login.value,form.password.value)){
+        const acc=ensureAccountantAccount();write(store.session,{id:acc.id});hydrate();renderAccountantDashboard();toast("Вы вошли в бухгалтерию Rooms.");return;
+      }
       const acc=findAccount(form.login.value);
       if(!acc)return toast("Кабинет не найден. Зарегистрируйтесь.");
       if(acc.password&&acc.password!==form.password.value)return toast("Пароль не подходит.");
@@ -2920,11 +3012,12 @@
       E.chips.querySelectorAll("[data-adult]").forEach(label=>{label.classList.toggle("disabled",!adult);if(!adult)label.querySelector("input").checked=false});
     }
     function hydrate(){
+      autoCompleteBookings();
       applyPartnerData();
       applyVenueAdminState();
       E.time.innerHTML=`<option value="" ${state.time?"":"selected"}>Любое время</option>`+times.map(t=>`<option value="${t}" ${t===state.time?"selected":""}>${t}</option>`).join("");
       E.date.min=today;E.date.value=state.date||today;syncDateDisplay();E.searchCity.value=state.city;E.spaceType.value=state.type;E.hours.value=String(state.hours);E.guests.value=state.guests;E.age.value=state.age;
-      E.accountButton.textContent=current()?(isAdmin()?"Админка":"Профиль"):"Войти";selectCity(state.city,false);syncAdult();renderCatalog();
+      E.accountButton.textContent=current()?(isAdmin()?"Админка":isAccountant()?"Бухгалтерия":"Профиль"):"Войти";selectCity(state.city,false);syncAdult();renderCatalog();
       updateNoticeBadge();
     }
 
@@ -2938,7 +3031,7 @@
     E.age.addEventListener("change",()=>{syncAdult();renderCatalog()});
     E.chips.addEventListener("change",()=>renderCatalog());
     E.cityButton.addEventListener("click",renderCityPicker);
-    E.noticeButton.addEventListener("click",()=>current()&&!isAdmin()?renderUserNotifications():read(store.partnerAuth,null)?renderPartnerNotifications():partnerNotice().unread?openPartnerBookings():toast("Уведомлений пока нет."));
+    E.noticeButton.addEventListener("click",()=>current()&&!isAdmin()&&!isAccountant()?renderUserNotifications():read(store.partnerAuth,null)?renderPartnerNotifications():partnerNotice().unread?openPartnerBookings():toast("Уведомлений пока нет."));
     E.accountButton.addEventListener("click",()=>current()?renderProfile():renderAuth());
     E.partnerEntry.addEventListener("click",openPartner);
     E.partnerAlert.addEventListener("click",handleNoticeClick);
@@ -2968,6 +3061,10 @@
       const busyDelete=e.target.closest("[data-busy-delete]");if(busyDelete){deletePartnerManualBusy(busyDelete.dataset.busyDelete);return}
       const photoDelete=e.target.closest("[data-photo-delete]");if(photoDelete){deletePartnerPhoto(photoDelete.dataset.photoDelete);return}
       const exportButton=e.target.closest("[data-export]");if(exportButton){exportBookings(exportButton.dataset.export);return}
+      if(e.target.closest("[data-accountant-open]")){renderAccountantDashboard();return}
+      if(e.target.closest("[data-admin-open]")){renderAdminDashboard();return}
+      if(e.target.closest("[data-create-payouts]")){createPayoutBatches();return}
+      const payoutPaid=e.target.closest("[data-payout-paid]");if(payoutPaid){completePayoutBatch(payoutPaid.dataset.payoutPaid);return}
       const bookingChat=e.target.closest("[data-booking-chat]");if(bookingChat){renderBookingChat(bookingChat.dataset.bookingChat);return}
       const chatBack=e.target.closest("[data-chat-back]");if(chatBack){const area=chatBack.dataset.chatBack;if(area==="profile")renderProfile(true);else if(area==="partner")renderPartnerCabinet(true);else renderAdminDashboard(true);return}
       const supportCase=e.target.closest("[data-support-case]");if(supportCase){renderSupportCase(supportCase.dataset.supportCase);return}

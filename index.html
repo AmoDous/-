@@ -373,6 +373,19 @@
     .activity-item strong{display:block;font-size:14px}
     .activity-item span{display:block;margin-top:4px;color:var(--muted);font-size:12px;line-height:1.4}
     .booking-summary{background:var(--paper-2)}
+    .policy-list{display:grid;gap:8px;margin-top:12px}
+    .policy-item{
+      display:grid;grid-template-columns:26px minmax(0,1fr);gap:9px;align-items:start;
+      border:1px solid var(--line);border-radius:14px;background:#fff;padding:10px 11px;
+    }
+    .policy-mark{
+      width:26px;height:26px;display:grid;place-items:center;border-radius:10px;background:var(--mint);
+      color:var(--green);font-size:12px;font-weight:950;font-variant-numeric:tabular-nums;
+    }
+    .policy-item strong{display:block;font-size:13px}
+    .policy-item span{display:block;margin-top:3px;color:var(--muted);font-size:12px;line-height:1.42}
+    .policy-note{margin-top:10px;color:var(--muted);font-size:12px;line-height:1.45}
+    .policy-note strong,.policy-note b{color:var(--ink)}
     .auth-tabs{display:flex;gap:8px}
     .auth-tabs .btn{flex:1}
     .auth-tabs .active{border-color:var(--green);background:var(--green);color:#fff}
@@ -1185,10 +1198,10 @@
       const rows=(scope==="partner"?partnerBookings(ids):adminBookings()).map(b=>{
         const status=effectiveBookingStatus(b),publicPhone=scope==="admin"||hasPaymentRecord(b)?b.phone:"скрыт до предоплаты";
         const last=bookingHistory(b)[0],lastAction=last?`${historyActorLabel(last.actor)}: ${last.title}${last.details?` · ${last.details}`:""}`:"";
-        const base=[b.name,publicPhone,b.date,b.time,b.hours,b.room,eventLabel(b.eventType)||"",b.eventName||"",bookingServicesText(b.services||[]),b.total||0,statusLabel(status),lastAction,b.comment||"",b.internalNote||""];
+        const base=[b.name,publicPhone,b.date,b.time,b.hours,b.room,eventLabel(b.eventType)||"",b.eventName||"",bookingServicesText(b.services||[]),b.total||0,statusLabel(status),lastAction,b.comment||"",b.internalNote||"",b.policy||bookingPolicyLine(b)||""];
         return scope==="admin"?[b.venue,b.city,...base,b.prepay||0,paymentStatusLabel(b.paymentStatus)||b.paymentStatus||""]:base;
       });
-      const head=scope==="admin"?["Площадка","Город","Клиент","Телефон","Дата","Время","Часы","Помещение","Событие","Название события","Услуги","Сумма","Статус","Последнее действие","Комментарий","Внутренняя заметка","Предоплата","Статус оплаты"]:["Клиент","Телефон","Дата","Время","Часы","Помещение","Событие","Название события","Услуги","Сумма","Статус","Последнее действие","Комментарий","Внутренняя заметка"];
+      const head=scope==="admin"?["Площадка","Город","Клиент","Телефон","Дата","Время","Часы","Помещение","Событие","Название события","Услуги","Сумма","Статус","Последнее действие","Комментарий","Внутренняя заметка","Правила","Предоплата","Статус оплаты"]:["Клиент","Телефон","Дата","Время","Часы","Помещение","Событие","Название события","Услуги","Сумма","Статус","Последнее действие","Комментарий","Внутренняя заметка","Правила"];
       downloadCsv(`rooms-${scope}-bookings-${today}.csv`,[head,...rows]);
       logActivity("export",scope==="admin"?"Экспорт админки":"Экспорт партнёра",`${rows.length} строк`);
       toast("Выгрузка подготовлена в CSV, файл откроется в Excel.");
@@ -1196,6 +1209,34 @@
     function mapUrl(v){
       const text=encodeURIComponent(`${v.city}, ${v.address}, ${v.title}`);
       return `https://yandex.ru/map-widget/v1/?text=${text}&z=15`;
+    }
+    function bookingPolicySnapshot(prepay=0){
+      return `Заявка отправляется без оплаты. После подтверждения площадкой клиент вносит предоплату ${money(prepay)}. До оплаты заявка отменяется без возврата. После оплаты отмена уходит на ручной разбор по правилам площадки.`;
+    }
+    function bookingPolicyHtml(prepay=0,compact=false){
+      if(compact)return `<p class="policy-note"><strong>Как работает бронь:</strong> заявка без оплаты, после подтверждения предоплата <b data-policy-prepay>${money(prepay)}</b>, отмена после оплаты — на разбор возврата по правилам площадки.</p>`;
+      const items=[
+        ["1","Заявка без оплаты","Сначала площадка проверяет дату, время и формат события."],
+        ["2","Предоплата после подтверждения",`Когда площадка подтвердит бронь, клиент вносит <b data-policy-prepay>${money(prepay)}</b> для закрепления времени.`],
+        ["3","Отмена и возврат","До предоплаты денег нет. После предоплаты отмена попадает на разбор возврата по правилам площадки."]
+      ];
+      return `<div class="policy-list">${items.map(([n,title,text])=>`<div class="policy-item"><span class="policy-mark">${n}</span><div><strong>${title}</strong><span>${text}</span></div></div>`).join("")}</div>${compact?"":`<p class="policy-note">Точные условия площадки фиксируются при подтверждении. В прототипе оплата и возврат показаны как демо-статусы.</p>`}`;
+    }
+    function hoursUntilBooking(b){
+      if(!b?.date||!b?.time)return null;
+      return (new Date(`${b.date}T${b.time}:00`).getTime()-Date.now())/3600000;
+    }
+    function bookingPolicyLine(b){
+      const status=effectiveBookingStatus(b);
+      if(status==="pending"||status==="proposed")return "Заявка пока без оплаты: можно отменить без возврата.";
+      if(status==="awaiting_payment")return `После предоплаты ${money(b.prepay||0)} время будет закреплено за клиентом.`;
+      if(status==="paid"){
+        const h=hoursUntilBooking(b);
+        return h!==null&&h<24?"До визита меньше 24 часов: отмена потребует ручного разбора.":"Предоплата внесена: при отмене возврат разбирается по правилам площадки.";
+      }
+      if(status==="cancelled")return b.paymentStatus==="refund_pending"?"Отмена после оплаты: нужен разбор возврата.":b.paymentStatus==="refunded"?"Возврат предоплаты закрыт.":"Отмена без оплаченной предоплаты.";
+      if(status==="refunded")return "Возврат предоплаты закрыт.";
+      return "";
     }
     function statusLabel(s){return ({pending:"новая",proposed:"предложено время",confirmed:"подтверждена",awaiting_payment:"ожидает предоплату",paid:"оплачена",expired:"оплата истекла",visited:"посещение состоялось",completed:"посещение состоялось",cancelled:"отменена",refunded:"возврат выполнен"})[s]||"новая"}
     function leadStatusLabel(s){return ({new:"новая заявка",review:"на модерации",approved:"одобрена",rejected:"отклонена"})[s]||"новая заявка"}
@@ -1437,6 +1478,7 @@
         timeSelect.innerHTML='<option value="">Нет свободных окон</option>';timeSelect.disabled=true;hoursSelect.innerHTML='<option value="">Нет времени</option>';hoursSelect.disabled=true;if(submit)submit.disabled=true;
         const note=form.querySelector("[data-booking-window-note]");if(note)note.textContent="На эту дату свободных окон нет. Попробуйте другой день.";
         const total=form.querySelector("[data-booking-total]"),prepay=form.querySelector("[data-booking-prepay]"),extrasRow=form.querySelector("[data-booking-extras]");if(total)total.textContent=money(0);if(prepay)prepay.textContent=money(0);if(extrasRow)extrasRow.hidden=true;
+        form.querySelectorAll("[data-policy-prepay]").forEach(x=>x.textContent=money(0));
         return;
       }
       const prevTime=timeSelect.value||state.time,chosen=windows.some(w=>w.time===prevTime)?prevTime:windows[0].time;
@@ -1447,6 +1489,7 @@
       const extras=servicesTotal(selectedBookingServices(form,r)),totalValue=r.price*chosenHours+extras,total=form.querySelector("[data-booking-total]"),prepay=form.querySelector("[data-booking-prepay]"),note=form.querySelector("[data-booking-window-note]"),extrasRow=form.querySelector("[data-booking-extras]");
       if(total)total.textContent=money(totalValue);
       if(prepay)prepay.textContent=money(Math.ceil(totalValue*.3));
+      form.querySelectorAll("[data-policy-prepay]").forEach(x=>x.textContent=money(Math.ceil(totalValue*.3)));
       if(extrasRow){extrasRow.hidden=!extras;extrasRow.querySelector("strong").textContent=money(extras)}
       if(note)note.textContent=bookingWindowNote(r,date,chosen,max,wanted);
     }
@@ -1795,6 +1838,7 @@
           <div class="windows">${wins.length?wins.map(w=>`<button class="window ${w.time===chosen?"active":""}" data-window="${r.id}|${w.time}" type="button">${w.time} · до ${w.max} ч</button>`).join(""):`<span class="window">Нет окон на эту дату</span>`}</div>
           ${note?`<p class="note">${esc(note)}</p>`:""}
           <div style="margin-top:12px"><div class="row"><span class="muted">${hours} ч × ${money(r.price)}</span><strong>/ час</strong></div><div class="row"><span class="muted">Предоплата после подтверждения</span><strong>${money(prepay)}</strong></div></div>
+          ${bookingPolicyHtml(prepay,true)}
           <button class="btn primary" data-book="${r.id}" type="button" style="width:100%;margin-top:12px">Забронировать</button>
           <div class="detail-card" style="margin-top:14px"><h3>В этом заведении</h3><p class="muted">${esc(v.about)}</p><div class="room-list">${siblings.map(s=>`<button class="room-option ${s.id===r.id?"active":""}" data-open-room="${s.id}" type="button"><strong>${esc(s.title)}</strong><span class="muted">${esc(s.subtitle)} · до ${s.capacity} · ${money(s.price)}/час</span></button>`).join("")}</div></div>
         </aside>
@@ -1803,7 +1847,7 @@
     }
     function renderBooking(id){
       const r=rooms.find(x=>x.id===id),v=venue(r),acc=current(),wins=freeWindows(r,state.date),wanted=Number(state.hours)||r.min,chosen=wins.some(w=>w.time===state.time)?state.time:(wins.find(w=>w.max>=Math.max(r.min,wanted))?.time||wins[0]?.time||""),hourOptions=chosen?bookingHourList(r,state.date,chosen):[],h=hourOptions.includes(wanted)?wanted:(hourOptions.find(x=>x>=wanted)||hourOptions[hourOptions.length-1]||r.min),services=roomServices(r),total=hourOptions.length?r.price*h:0,prepay=Math.ceil(total*.3),eventType=defaultEventForRoom(r);
-      openModal(`<span class="kicker">${esc(v.title)} · ${esc(r.title)}</span><h2 style="margin:0">Заявка на бронь</h2><p class="muted">Оставьте имя и телефон. Если кабинета с таким телефоном ещё нет, мы создадим базовый личный кабинет.</p><form id="bookingForm" data-room="${r.id}"><div class="form"><div class="field"><label>Дата</label><input name="date" data-booking-date type="date" min="${today}" value="${state.date}" required></div><div class="field"><label>Время</label><select name="time" data-booking-time ${wins.length?"":"disabled"}>${wins.length?wins.map(w=>`<option value="${w.time}" ${w.time===chosen?"selected":""}>${w.time} · до ${w.max} ${hourWord(w.max)}</option>`).join(""):`<option value="">Нет свободных окон</option>`}</select></div><div class="field"><label>Длительность</label><select name="hours" data-booking-hours ${hourOptions.length?"":"disabled"}>${hourOptions.length?hourOptions.map(x=>`<option value="${x}" ${x===h?"selected":""}>${x} ${hourWord(x)}</option>`).join(""):`<option value="">Нет времени</option>`}</select></div><div class="field"><label>Гостей</label><input name="guests" type="number" min="1" max="${r.capacity}" value="${Math.min(Number(state.guests),r.capacity)}" required></div><div class="field"><label>Формат события</label><select name="eventType">${eventSelect(eventType)}</select></div><div class="field"><label>Название события</label><input name="eventName" placeholder="Например: день рождения Алисы"></div><div class="field"><label>Имя</label><input name="name" value="${esc(acc?.name||"")}" required></div><div class="field"><label>Телефон</label><input name="phone" type="tel" value="${esc(acc?.phone||"")}" placeholder="+7..." required></div>${services.length?`<div class="field full"><label>Дополнительные услуги</label><div class="booking-services">${services.map(x=>`<label class="booking-service"><span><input name="services" data-booking-service type="checkbox" value="${esc(x.id)}">${esc(x.name)}</span><strong>+ ${money(x.price)}</strong></label>`).join("")}</div></div>`:""}<div class="field full"><label>Комментарий</label><textarea name="comment" placeholder="Например: нужен проектор, можно ли принести торт, есть ли зона для аниматора"></textarea></div></div><div class="profile-block booking-summary" style="margin-top:14px"><div class="row" data-booking-extras hidden><span class="muted">Дополнительные услуги</span><strong>${money(0)}</strong></div><div class="row"><span class="muted">Итого</span><strong data-booking-total>${money(total)}</strong></div><div class="row"><span class="muted">Предоплата</span><strong data-booking-prepay>${money(prepay)}</strong></div><p class="note" data-booking-window-note>${esc(bookingWindowNote(r,state.date,chosen,chosen?capacity(r,state.date,chosen):0,wanted))}</p></div><div class="chips" style="margin-top:14px"><button class="btn primary" data-booking-submit type="submit" ${hourOptions.length?"":"disabled"}>Отправить заявку</button><button class="btn" data-open-room="${r.id}" type="button">Назад к помещению</button></div></form>`,true);
+      openModal(`<span class="kicker">${esc(v.title)} · ${esc(r.title)}</span><h2 style="margin:0">Заявка на бронь</h2><p class="muted">Оставьте имя и телефон. Если кабинета с таким телефоном ещё нет, мы создадим базовый личный кабинет.</p><form id="bookingForm" data-room="${r.id}"><div class="form"><div class="field"><label>Дата</label><input name="date" data-booking-date type="date" min="${today}" value="${state.date}" required></div><div class="field"><label>Время</label><select name="time" data-booking-time ${wins.length?"":"disabled"}>${wins.length?wins.map(w=>`<option value="${w.time}" ${w.time===chosen?"selected":""}>${w.time} · до ${w.max} ${hourWord(w.max)}</option>`).join(""):`<option value="">Нет свободных окон</option>`}</select></div><div class="field"><label>Длительность</label><select name="hours" data-booking-hours ${hourOptions.length?"":"disabled"}>${hourOptions.length?hourOptions.map(x=>`<option value="${x}" ${x===h?"selected":""}>${x} ${hourWord(x)}</option>`).join(""):`<option value="">Нет времени</option>`}</select></div><div class="field"><label>Гостей</label><input name="guests" type="number" min="1" max="${r.capacity}" value="${Math.min(Number(state.guests),r.capacity)}" required></div><div class="field"><label>Формат события</label><select name="eventType">${eventSelect(eventType)}</select></div><div class="field"><label>Название события</label><input name="eventName" placeholder="Например: день рождения Алисы"></div><div class="field"><label>Имя</label><input name="name" value="${esc(acc?.name||"")}" required></div><div class="field"><label>Телефон</label><input name="phone" type="tel" value="${esc(acc?.phone||"")}" placeholder="+7..." required></div>${services.length?`<div class="field full"><label>Дополнительные услуги</label><div class="booking-services">${services.map(x=>`<label class="booking-service"><span><input name="services" data-booking-service type="checkbox" value="${esc(x.id)}">${esc(x.name)}</span><strong>+ ${money(x.price)}</strong></label>`).join("")}</div></div>`:""}<div class="field full"><label>Комментарий</label><textarea name="comment" placeholder="Например: нужен проектор, можно ли принести торт, есть ли зона для аниматора"></textarea></div></div><div class="profile-block booking-summary" style="margin-top:14px"><div class="row" data-booking-extras hidden><span class="muted">Дополнительные услуги</span><strong>${money(0)}</strong></div><div class="row"><span class="muted">Итого</span><strong data-booking-total>${money(total)}</strong></div><div class="row"><span class="muted">Предоплата</span><strong data-booking-prepay>${money(prepay)}</strong></div>${bookingPolicyHtml(prepay,true)}<p class="note" data-booking-window-note>${esc(bookingWindowNote(r,state.date,chosen,chosen?capacity(r,state.date,chosen):0,wanted))}</p></div><div class="chips" style="margin-top:14px"><button class="btn primary" data-booking-submit type="submit" ${hourOptions.length?"":"disabled"}>Отправить заявку</button><button class="btn" data-open-room="${r.id}" type="button">Назад к помещению</button></div></form>`,true);
       requestAnimationFrame(()=>updateBookingForm($("bookingForm")));
     }
     function updateProposalForm(form){
@@ -1875,7 +1919,8 @@
     function bookingCard(b,area="admin"){
       const status=effectiveBookingStatus(b),room=rooms.find(r=>r.id===b.roomId),windows=room?freeWindows(room,b.date).length:0;
       const p=b.proposal,priorityTags=bookingPriorityTags(b),serviceTags=(b.services||[]).map(x=>`<span class="tag">${esc(x.name)} · +${money(x.price)}</span>`).join(""),eventTags=[eventLabel(b.eventType),b.eventName].filter(Boolean).map(x=>`<span class="tag">${esc(x)}</span>`).join("");
-      return `<article class="admin-item" data-booking-card="${esc(b.id)}"><div class="admin-item-head"><div><h4>${esc(b.venue)} · ${esc(b.room)}</h4><p class="muted" style="margin:0">${bookingContactLine(b,area)} · ${esc(b.date)} в ${esc(b.time)} · ${b.hours} ч · ${b.guests} гостей</p></div><span class="status ${esc(status)}">${statusLabel(status)}</span></div>${bookingFlow(status)}<div class="admin-meta">${priorityTags}<span class="tag">${money(b.total||0)}</span><span class="tag">${prepayText(b)}</span>${paymentMetaTags(b)}${eventTags}${serviceTags}<span class="tag">${windows} окон в комнате</span>${p?`<span class="tag">предложено ${esc(p.date)} в ${esc(p.time)} на ${p.hours} ч</span>`:""}</div>${b.comment?`<p class="muted" style="margin:10px 0 0">Комментарий: ${esc(b.comment)}</p>`:""}${cancelMeta(b)}${bookingHistoryHtml(b,area)}${bookingInternalNote(b,area)}<div class="admin-actions">${bookingActions(b,area)}</div></article>`;
+      const policy=bookingPolicyLine(b);
+      return `<article class="admin-item" data-booking-card="${esc(b.id)}"><div class="admin-item-head"><div><h4>${esc(b.venue)} · ${esc(b.room)}</h4><p class="muted" style="margin:0">${bookingContactLine(b,area)} · ${esc(b.date)} в ${esc(b.time)} · ${b.hours} ч · ${b.guests} гостей</p></div><span class="status ${esc(status)}">${statusLabel(status)}</span></div>${bookingFlow(status)}<div class="admin-meta">${priorityTags}<span class="tag">${money(b.total||0)}</span><span class="tag">${prepayText(b)}</span>${paymentMetaTags(b)}${eventTags}${serviceTags}<span class="tag">${windows} окон в комнате</span>${p?`<span class="tag">предложено ${esc(p.date)} в ${esc(p.time)} на ${p.hours} ч</span>`:""}</div>${policy?`<p class="policy-note">Правила: ${esc(policy)}</p>`:""}${b.comment?`<p class="muted" style="margin:10px 0 0">Комментарий: ${esc(b.comment)}</p>`:""}${cancelMeta(b)}${bookingHistoryHtml(b,area)}${bookingInternalNote(b,area)}<div class="admin-actions">${bookingActions(b,area)}</div></article>`;
     }
     function renderFavorites(){
       const saved=[...favorites()].map(id=>rooms.find(r=>r.id===id)).filter(Boolean);
@@ -2184,7 +2229,7 @@
       list=list.map(b=>{
         if(b.id!==id)return b;
         let next;
-        if(status==="awaiting_payment"||status==="confirmed")next={...b,status:"awaiting_payment",paymentStatus:"pending",paymentDueAt:new Date(Date.now()+15*60*1000).toISOString(),confirmedAt:new Date().toISOString(),proposal:null};
+        if(status==="awaiting_payment"||status==="confirmed")next={...b,status:"awaiting_payment",paymentStatus:"pending",paymentDueAt:new Date(Date.now()+15*60*1000).toISOString(),confirmedAt:new Date().toISOString(),proposal:null,policy:b.policy||bookingPolicySnapshot(b.prepay||0)};
         else if(status==="pending")next={...b,status,paymentStatus:"",paymentDueAt:"",paidAt:"",proposal:null};
         else next={...b,status};
         return appendBookingHistory(next,"status",`Статус изменён: ${statusLabel(effectiveBookingStatus(next))}`,status==="awaiting_payment"?"Клиенту открыт шаг предоплаты.":statusLabel(effectiveBookingStatus(next)),after);
@@ -2215,7 +2260,7 @@
       let list=read(store.bookings,[]);const b=list.find(x=>x.id===id),r=rooms.find(x=>x.id===b?.roomId),p=b?.proposal;
       if(!b||!r||!p)return toast("Предложение не найдено.");
       if(capacity(r,p.date,p.time)<Number(p.hours)){return toast("Это окно уже занято. Площадка предложит другое время.")}
-      list=list.map(x=>x.id===id?appendBookingHistory({...x,date:p.date,time:p.time,hours:Number(p.hours),total:p.total||(r.price*Number(p.hours)+servicesTotal(x.services||[])),prepay:p.prepay||Math.ceil((r.price*Number(p.hours)+servicesTotal(x.services||[]))*.3),status:"awaiting_payment",paymentStatus:"pending",paymentDueAt:new Date(Date.now()+15*60*1000).toISOString(),proposal:null,proposalAcceptedAt:new Date().toISOString()},"proposal_accept","Клиент принял предложенное время",`${p.date} в ${p.time} на ${p.hours} ч`,"client"):x);
+      list=list.map(x=>x.id===id?appendBookingHistory({...x,date:p.date,time:p.time,hours:Number(p.hours),total:p.total||(r.price*Number(p.hours)+servicesTotal(x.services||[])),prepay:p.prepay||Math.ceil((r.price*Number(p.hours)+servicesTotal(x.services||[]))*.3),policy:bookingPolicySnapshot(p.prepay||Math.ceil((r.price*Number(p.hours)+servicesTotal(x.services||[]))*.3)),status:"awaiting_payment",paymentStatus:"pending",paymentDueAt:new Date(Date.now()+15*60*1000).toISOString(),proposal:null,proposalAcceptedAt:new Date().toISOString()},"proposal_accept","Клиент принял предложенное время",`${p.date} в ${p.time} на ${p.hours} ч`,"client"):x);
       saveAdminBookings(list);logActivity("proposal_accept","Клиент принял новое время",`${b.id} · ${p.date} ${p.time} · ${p.hours} ч`,"client");hydrate();markCurrentUserNoticesRead();renderProfile();toast("Время принято. Теперь можно внести предоплату.");
     }
     function declineProposal(id){
@@ -2226,8 +2271,8 @@
     function renderCancelBooking(payload){
       const [id,actor="admin",after="admin"]=payload.split("|"),b=adminBookings().find(x=>x.id===id);
       if(!b)return toast("Заявка не найдена.");
-      const paid=isPrepayPaid(b),actorText=cancelActorLabel(actor);
-      openModal(`<span class="kicker">${esc(b.venue)} · ${esc(b.room)}</span><h2 style="margin:0">Отмена брони</h2><p class="muted">Отменяет: ${actorText}. ${paid?"Бронь уже оплачена, поэтому причину важно сохранить для возврата и разбора спорной ситуации.":"Причина будет видна в карточке заявки."}</p><form id="cancelBookingForm" data-booking="${b.id}" data-actor="${actor}" data-after="${after}"><div class="form"><div class="field full"><label>Причина отмены</label><select name="reasonPreset"><option value="">Выберите причину</option><option>Время больше недоступно</option><option>Клиент попросил отменить</option><option>Не подходит формат мероприятия</option><option>Ошибка в расписании</option><option>Другая причина</option></select></div><div class="field full"><label>Комментарий</label><textarea name="reason" minlength="5" placeholder="Коротко опишите, почему отменяется заявка" required></textarea></div></div><div class="chips" style="margin-top:14px"><button class="btn primary" type="submit">Подтвердить отмену</button><button class="btn" data-close-modal type="button">Назад</button></div></form>`,true);
+      const paid=isPrepayPaid(b),actorText=cancelActorLabel(actor),policy=bookingPolicyLine(b);
+      openModal(`<span class="kicker">${esc(b.venue)} · ${esc(b.room)}</span><h2 style="margin:0">Отмена брони</h2><p class="muted">Отменяет: ${actorText}. ${paid?"Бронь уже оплачена, поэтому причину важно сохранить для возврата и разбора спорной ситуации.":"Причина будет видна в карточке заявки."}</p>${policy?`<p class="policy-note">Правила: ${esc(policy)}</p>`:""}<form id="cancelBookingForm" data-booking="${b.id}" data-actor="${actor}" data-after="${after}"><div class="form"><div class="field full"><label>Причина отмены</label><select name="reasonPreset"><option value="">Выберите причину</option><option>Время больше недоступно</option><option>Клиент попросил отменить</option><option>Не подходит формат мероприятия</option><option>Ошибка в расписании</option><option>Другая причина</option></select></div><div class="field full"><label>Комментарий</label><textarea name="reason" minlength="5" placeholder="Коротко опишите, почему отменяется заявка" required></textarea></div></div><div class="chips" style="margin-top:14px"><button class="btn primary" type="submit">Подтвердить отмену</button><button class="btn" data-close-modal type="button">Назад</button></div></form>`,true);
     }
     function submitCancelBooking(form){
       const id=form.dataset.booking,actor=form.dataset.actor||"admin",after=form.dataset.after||"admin",fd=new FormData(form);
@@ -2334,7 +2379,7 @@
       if(!time||!h||available<h||available<r.min){updateBookingForm(form);return toast("Это окно уже недоступно для выбранной длительности. Выберите другое время.")}
       state.date=date;state.time=time;state.hours=h;state.guests=guests;
       const eventType=String(fd.get("eventType")||defaultEventForRoom(r)),eventName=String(fd.get("eventName")||"").trim();
-      const services=selectedBookingServices(form,r),total=r.price*h+servicesTotal(services),b={id:`R-${Date.now().toString().slice(-6)}`,roomId:r.id,room:r.title,venue:v.title,city:v.city,date,time,hours:h,guests,name:fd.get("name"),phone:ph,eventType,eventName,comment:String(fd.get("comment")||"").trim(),services,total,prepay:Math.ceil(total*.3),status:"pending",created:new Date().toISOString()};
+      const services=selectedBookingServices(form,r),total=r.price*h+servicesTotal(services),prepay=Math.ceil(total*.3),b={id:`R-${Date.now().toString().slice(-6)}`,roomId:r.id,room:r.title,venue:v.title,city:v.city,date,time,hours:h,guests,name:fd.get("name"),phone:ph,eventType,eventName,comment:String(fd.get("comment")||"").trim(),services,total,prepay,policy:bookingPolicySnapshot(prepay),status:"pending",created:new Date().toISOString()};
       const ex=findAccount(ph),cur=current();
       if(ex&&!cur){pending=b;renderAuth("login",ph);toast("Кабинет с таким телефоном уже есть. Войдите, чтобы отправить заявку.");return}
       if(ex&&cur&&ex.id!==cur.id){pending=b;renderAuth("login",ph);toast("Войдите в кабинет, к которому привязан этот телефон.");return}

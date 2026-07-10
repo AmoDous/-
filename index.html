@@ -404,6 +404,20 @@
     .support-message span{display:block;margin-top:3px;color:var(--muted);font-size:12px;line-height:1.42}
     .support-message.client{background:var(--mint)}
     .support-message.admin{border-color:#e1b5a7;background:var(--paper-2)}
+    .chat-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+    .chat-thread{display:grid;gap:9px;max-height:390px;overflow:auto;margin-top:14px;padding:4px 3px 8px}
+    .chat-message{max-width:82%;border:1px solid var(--line);border-radius:14px;background:#fff;padding:10px 12px}
+    .chat-message.client{justify-self:end;border-color:#e0b9ad;background:var(--paper-2)}
+    .chat-message.partner{justify-self:start;background:var(--mint)}
+    .chat-message.system{justify-self:center;max-width:94%;border-style:dashed;background:#fff;color:var(--muted);text-align:center}
+    .chat-message strong{display:block;font-size:12px}
+    .chat-message span{display:block;margin-top:4px;font-size:13px;line-height:1.48;overflow-wrap:anywhere}
+    .chat-message time{display:block;margin-top:5px;color:var(--muted);font-size:10px}
+    .chat-guard{margin-top:12px;border:1px solid #efd29b;border-radius:14px;background:#fff7e8;padding:10px 12px;color:#74521d;font-size:12px;line-height:1.45}
+    .chat-guard.open{border-color:#cde0d4;background:#edf7f0;color:#35634a}
+    .chat-compose{margin-top:12px}
+    .chat-compose textarea{min-height:86px}
+    .chat-error{min-height:18px;margin:5px 0 0;color:#a44335;font-size:12px;font-weight:800}
     .auth-tabs{display:flex;gap:8px}
     .auth-tabs .btn{flex:1}
     .auth-tabs .active{border-color:var(--green);background:var(--green);color:#fff}
@@ -931,7 +945,7 @@
     const $=id=>document.getElementById(id);
     const cities=["Воронеж","Москва","Санкт-Петербург","Краснодар"];
     const times=[...Array.from({length:14},(_,i)=>`${String(i+10).padStart(2,"0")}:00`),"00:00","01:00","02:00","03:00","04:00","05:00"];
-    const store={accounts:"rooms_accounts_v30",session:"rooms_session_v30",bookings:"rooms_bookings_v30",favorites:"rooms_favorites_v30",reviews:"rooms_reviews_v30",partner:"rooms_partner_v30",partnerAuth:"rooms_partner_auth_v30",partnerData:"rooms_partner_data_v30",venueAdmin:"rooms_venue_admin_v30",partnerNotice:"rooms_partner_notice_v30",userNotice:"rooms_user_notice_v30",support:"rooms_support_v30",activity:"rooms_activity_v30",moderation:"rooms_moderation_v30"};
+    const store={accounts:"rooms_accounts_v30",session:"rooms_session_v30",bookings:"rooms_bookings_v30",favorites:"rooms_favorites_v30",reviews:"rooms_reviews_v30",partner:"rooms_partner_v30",partnerAuth:"rooms_partner_auth_v30",partnerData:"rooms_partner_data_v30",venueAdmin:"rooms_venue_admin_v30",partnerNotice:"rooms_partner_notice_v30",userNotice:"rooms_user_notice_v30",support:"rooms_support_v30",activity:"rooms_activity_v30",moderation:"rooms_moderation_v30",chat:"rooms_chat_v30"};
     const adminAccess={login:"admin@rooms.ru",password:"rooms2026"};
     const day=n=>{const d=new Date();d.setHours(12,0,0,0);d.setDate(d.getDate()+n);return d.toISOString().slice(0,10)};
     const today=day(0);
@@ -1421,7 +1435,7 @@
     function openSupportForBooking(id){return supportForBooking(id).filter(x=>(x.status||"open")!=="closed")}
     function supportButton(b,area){
       const open=openSupportForBooking(b.id).length,label=open?`Обращение · ${open}`:area==="profile"?"Написать в поддержку":"Поддержка";
-      return `<button class="btn soft" data-support-case="${esc(b.id)}|${esc(area)}" type="button">${label}</button>`;
+      return `${chatButton(b,area)}<button class="btn soft" data-support-case="${esc(b.id)}|${esc(area)}" type="button">${label}</button>`;
     }
     function supportCaseMeta(c){
       const b=adminBookings().find(x=>x.id===c.bookingId);
@@ -1468,6 +1482,66 @@
       let updated=null,list=supportCases().map(c=>c.id===id?(updated={...c,status,updated:new Date().toISOString()}):c);
       saveSupportCases(list);if(updated)logActivity("support_status","Статус обращения изменён",`${supportCaseMeta(updated)} · ${supportStatusLabel(status)}`,"admin");
       area==="admin"?renderAdminDashboard(true):renderPartnerCabinet(true);toast(`Обращение: ${supportStatusLabel(status)}.`);
+    }
+    function chatThreads(){return read(store.chat,{})||{}}
+    function bookingChat(id){const item=chatThreads()[id]||{};return {bookingId:id,messages:Array.isArray(item.messages)?item.messages:[]}}
+    function saveBookingChat(thread){const all=chatThreads();all[thread.bookingId]=thread;write(store.chat,all)}
+    function chatActorForArea(area){return area==="profile"?"client":area}
+    function chatActorLabel(actor){return ({client:"Клиент",partner:"Площадка",admin:"Rooms",system:"Rooms"})[actor]||"Rooms"}
+    function chatUnreadCount(bookingId,area){
+      const actor=chatActorForArea(area);if(actor==="admin")return 0;
+      return bookingChat(bookingId).messages.filter(x=>x.actor!==actor&&!(x.readBy||[]).includes(actor)).length;
+    }
+    function markChatRead(bookingId,area){
+      const actor=chatActorForArea(area),thread=bookingChat(bookingId);if(!thread.messages.length)return;
+      thread.messages=thread.messages.map(x=>x.actor===actor||x.readBy?.includes(actor)?x:{...x,readBy:[...(x.readBy||[]),actor]});saveBookingChat(thread);
+    }
+    function markChatNoticesRead(bookingId,area){
+      if(area==="partner"){
+        const notice=partnerNotice(),items=partnerNoticeItems().map(x=>x.type==="chat"&&x.bookingId===bookingId?{...x,read:true}:x);savePartnerNotice({...notice,items,unread:items.filter(x=>!x.read).length});return;
+      }
+      if(area==="profile"){
+        const notice=currentUserNotice(),items=currentUserNoticeItems().map(x=>x.status==="chat"&&x.bookingId===bookingId?{...x,read:true}:x);saveCurrentUserNotice({...notice,items,unread:items.filter(x=>!x.read).length});
+      }
+    }
+    function blockedChatContact(text){
+      const value=String(text||""),lower=value.toLocaleLowerCase("ru-RU");
+      if(/[a-zа-я0-9._%+-]+@[a-zа-я0-9.-]+\.[a-zа-я]{2,}/iu.test(value))return "email";
+      if(/(?:https?:\/\/|www\.|t\.me\/|wa\.me\/|[a-zа-я0-9-]+\.(?:ru|рф|com|net|org)\b)/iu.test(value))return "ссылку";
+      if(/(^|\s)@[a-zа-я0-9_]{3,}/iu.test(value)||/(telegram|телеграм|whatsapp|ватсап|viber|вайбер|instagram|инстаграм|вконтакте|\bvk\b)/iu.test(lower))return "контакт мессенджера";
+      const phoneLike=value.match(/\+?\d[\d\s()\-]{7,}\d/g)||[];
+      if(phoneLike.some(x=>(x.match(/\d/g)||[]).length>=10))return "номер телефона";
+      return "";
+    }
+    function chatClosed(b){return ["cancelled","expired","visited","completed","refunded"].includes(effectiveBookingStatus(b))}
+    function chatButton(b,area){
+      const unread=chatUnreadCount(b.id,area),label=area==="admin"?"Открыть чат":"Чат с "+(area==="profile"?"площадкой":"клиентом");
+      return `<button class="btn ${unread?"soft":""}" data-booking-chat="${b.id}|${area}" type="button">${label}${unread?` · ${unread}`:""}</button>`;
+    }
+    function renderBookingChat(payload){
+      const [id,area="profile"]=String(payload||"").split("|"),b=adminBookings().find(x=>x.id===id),actor=chatActorForArea(area),acc=current();
+      if(!b)return toast("Заявка для чата не найдена.");
+      if(area==="profile"&&(!acc||isAdmin(acc)||phone(acc.phone)!==phone(b.phone)))return renderAuth();
+      if(area==="partner"&&(!read(store.partnerAuth,null)||!partnerRoomIds().some(roomId=>bookingContainsRoom(b,roomId))))return renderPartnerLogin();
+      if(area==="admin"&&!isAdmin(acc))return toast("Чат доступен администратору Rooms.");
+      markChatRead(id,area);markChatNoticesRead(id,area);
+      const thread=bookingChat(id),paid=hasPaymentRecord(b),closed=chatClosed(b),messages=thread.messages.map(x=>`<div class="chat-message ${esc(x.actor)}"><strong>${x.actor===actor?"Вы":chatActorLabel(x.actor)}</strong><span>${esc(x.text).replace(/\n/g,"<br>")}</span><time>${new Date(x.created).toLocaleString("ru-RU",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})}</time></div>`).join("");
+      const back=area==="profile"?"В мои заявки":area==="partner"?"В кабинет партнёра":"В админку",guard=paid?"Предоплата внесена. Контакт клиента уже открыт площадке в заявке.":"До предоплаты Rooms блокирует телефоны, email, ссылки и контакты мессенджеров. Обсуждайте здесь детали события и условия площадки.";
+      const compose=actor!=="admin"&&!closed?`<form id="bookingChatForm" class="chat-compose" data-booking="${esc(id)}" data-area="${esc(area)}"><div class="field full"><label>Сообщение</label><textarea name="message" maxlength="1000" placeholder="Напишите о деталях события, услугах или правилах площадки" required></textarea></div><p class="chat-error" data-chat-error></p><div class="chips"><button class="btn primary" type="submit">Отправить</button></div></form>`:`<p class="muted" style="margin:12px 0 0">${actor==="admin"?"Администратор видит переписку в режиме просмотра.":"Переписка закрыта вместе с завершением заявки."}</p>`;
+      const quick=area==="partner"&&!closed?`<div class="admin-actions">${bookingActions(b,"partner")}</div>`:"";
+      openModal(`<div class="chat-head"><div><span class="kicker">${esc(b.venue)} · ${esc(b.room)}</span><h2 style="margin:4px 0 6px">Чат по заявке ${esc(b.id)}</h2><p class="muted" style="margin:0">${esc(b.date)} в ${esc(b.time)} · ${b.hours} ч · ${b.guests} гостей</p></div><button class="btn" data-chat-back="${esc(area)}" type="button">${back}</button></div><div class="chat-guard ${paid?"open":""}">${guard}</div><div class="chat-thread" data-chat-thread>${messages||`<div class="chat-message system"><span>Сообщений пока нет. Начните с деталей события или вопроса площадке.</span></div>`}</div>${quick}${compose}`,false);
+      requestAnimationFrame(()=>{const box=document.querySelector("[data-chat-thread]");if(box)box.scrollTop=box.scrollHeight});
+    }
+    function submitBookingChat(form){
+      const id=form.dataset.booking,area=form.dataset.area||"profile",actor=chatActorForArea(area),b=adminBookings().find(x=>x.id===id),text=String(new FormData(form).get("message")||"").trim(),error=form.querySelector("[data-chat-error]");
+      if(!b)return toast("Заявка для чата не найдена.");
+      if(text.length<1)return;
+      const blocked=!hasPaymentRecord(b)?blockedChatContact(text):"";
+      if(blocked){if(error)error.textContent=`Сообщение не отправлено: до предоплаты нельзя передавать ${blocked}.`;return toast("Контакты откроются после предоплаты.")}
+      const thread=bookingChat(id),created=new Date().toISOString();thread.messages.push({id:`CHAT-${Date.now().toString(36)}`,actor,text,created,readBy:[actor]});saveBookingChat(thread);
+      logActivity("booking_chat","Новое сообщение в чате",`${b.id} · ${chatActorLabel(actor)} · ${b.room}`,actor);
+      if(actor==="client")notifyPartnerChat(b,text);else if(actor==="partner")notifyUserChat(b,text);
+      renderBookingChat(`${id}|${area}`);
     }
     function csvCell(value){return `"${String(value??"").replaceAll('"','""')}"`}
     function downloadCsv(name,rows){
@@ -1954,7 +2028,7 @@
       return b?[{id:`legacy-${b.id}`,bookingId:b.id,status:notice.lastStatus||b.status,room:b.room,venue:b.venue,date:b.date,time:b.time,created:notice.updated||b.created||new Date().toISOString(),read:!notice.unread}]:[];
     }
     function userNoticeTitle(status){
-      return ({proposed:"Площадка предложила другое время",awaiting_payment:"Время подтверждено",confirmed:"Время подтверждено",paid:"Предоплата получена",visited:"Посещение завершено",completed:"Посещение завершено",cancelled:"Бронь отменена",expired:"Время оплаты истекло",refunded:"Возврат предоплаты выполнен"})[status]||"Статус брони изменён";
+      return ({chat:"Новое сообщение площадки",proposed:"Площадка предложила другое время",awaiting_payment:"Время подтверждено",confirmed:"Время подтверждено",paid:"Предоплата получена",visited:"Посещение завершено",completed:"Посещение завершено",cancelled:"Бронь отменена",expired:"Время оплаты истекло",refunded:"Возврат предоплаты выполнен"})[status]||"Статус брони изменён";
     }
     function markCurrentUserNoticesRead(){
       const notice=currentUserNotice(),items=currentUserNoticeItems();
@@ -1984,12 +2058,24 @@
       if(acc&&!isAdmin(acc)&&phone(acc.phone)===key)showUserNotice(b,status);
       updateNoticeBadge();
     }
+    function showUserChatNotice(b,preview=""){
+      if(!E.partnerAlert)return;
+      E.partnerAlert.dataset.noticeTarget="profile-chat";E.partnerAlert.dataset.bookingId=b.id;
+      E.partnerAlert.innerHTML=`<div class="notice-row"><span class="notice-dot"></span><div><span class="kicker">Сообщение площадки</span><strong>${esc(b.room)}</strong><span>${esc(preview||"Площадка ответила в чате")} · нажмите, чтобы открыть</span></div></div>`;
+      E.partnerAlert.classList.add("show");clearTimeout(window.__partnerNoticeTimer);window.__partnerNoticeTimer=setTimeout(()=>E.partnerAlert.classList.remove("show"),9000);
+    }
+    function notifyUserChat(b,text){
+      const key=phone(b.phone);if(!key)return;
+      const all=userNotices(),prev=all[key]||{unread:0,items:[]},created=new Date().toISOString(),preview=String(text||"").slice(0,90),item={id:`N-${Date.now().toString(36)}`,bookingId:b.id,status:"chat",preview,room:b.room,venue:b.venue,date:b.date,time:b.time,created,read:false};
+      all[key]={...prev,unread:(prev.unread||0)+1,lastId:b.id,lastStatus:"chat",updated:created,items:[item,...(Array.isArray(prev.items)?prev.items:[])].slice(0,30)};saveUserNotices(all);
+      const acc=current();if(acc&&!isAdmin(acc)&&phone(acc.phone)===key)showUserChatNotice(b,preview);updateNoticeBadge();
+    }
     function renderUserNotifications(){
       const acc=current();if(!acc||isAdmin(acc))return renderAuth();
       const items=currentUserNoticeItems();
       markCurrentUserNoticesRead();
-      const rows=items.map(x=>`<button class="notification-item ${x.read?"":"unread"}" data-user-notice="${esc(x.bookingId)}" type="button"><span class="notice-dot"></span><span><strong>${esc(userNoticeTitle(x.status))}</strong><span>${esc(x.venue||"Rooms")} · ${esc(x.room||"помещение")} · ${esc(x.date||"")} ${x.time?`в ${esc(x.time)}`:""}</span></span><time>${new Date(x.created).toLocaleString("ru-RU",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})}</time></button>`).join("");
-      openModal(`<div class="admin-item-head"><div><span class="kicker">Личный кабинет</span><h2 style="margin:4px 0 6px">Уведомления</h2><p class="muted" style="margin:0">Изменения по вашим заявкам и оплатам.</p></div><button class="btn" data-profile-back type="button">Назад</button></div><div class="notification-list">${rows||`<div class="empty" style="display:block">Уведомлений пока нет.</div>`}</div>`,true);
+      const rows=items.map(x=>{const chat=x.status==="chat",target=chat?`chat:${x.bookingId}|profile`:x.bookingId,details=chat?(x.preview||"Площадка ответила в чате"):`${x.venue||"Rooms"} · ${x.room||"помещение"} · ${x.date||""} ${x.time?`в ${x.time}`:""}`;return `<button class="notification-item ${x.read?"":"unread"}" data-user-notice="${esc(target)}" type="button"><span class="notice-dot"></span><span><strong>${esc(userNoticeTitle(x.status))}</strong><span>${esc(details)}</span></span><time>${new Date(x.created).toLocaleString("ru-RU",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})}</time></button>`}).join("");
+      openModal(`<div class="admin-item-head"><div><span class="kicker">Личный кабинет</span><h2 style="margin:4px 0 6px">Уведомления</h2><p class="muted" style="margin:0">Изменения по заявкам, оплатам и новые сообщения площадок.</p></div><button class="btn" data-profile-back type="button">Назад</button></div><div class="notification-list">${rows||`<div class="empty" style="display:block">Уведомлений пока нет.</div>`}</div>`,true);
     }
     function openProfileBookings(){
       E.partnerAlert.classList.remove("show");
@@ -2001,7 +2087,9 @@
       updateNoticeBadge();
     }
     function handleNoticeClick(){
-      if(E.partnerAlert.dataset.noticeTarget==="profile")openProfileBookings();
+      if(E.partnerAlert.dataset.noticeTarget==="profile-chat")renderBookingChat(`${E.partnerAlert.dataset.bookingId}|profile`);
+      else if(E.partnerAlert.dataset.noticeTarget==="profile")openProfileBookings();
+      else if(E.partnerAlert.dataset.noticeTarget==="partner-chat")renderBookingChat(`${E.partnerAlert.dataset.bookingId}|partner`);
       else if(E.partnerAlert.dataset.noticeTarget==="partner-moderation")openPartnerModeration();
       else openPartnerBookings();
     }
@@ -2024,6 +2112,12 @@
       clearTimeout(window.__partnerNoticeTimer);
       window.__partnerNoticeTimer=setTimeout(()=>E.partnerAlert.classList.remove("show"),9000);
       if(sound)playPartnerClick();
+    }
+    function showPartnerChatNotice(b,preview="",{sound=true}={}){
+      if(!E.partnerAlert)return;
+      E.partnerAlert.dataset.noticeTarget="partner-chat";E.partnerAlert.dataset.bookingId=b.id;
+      E.partnerAlert.innerHTML=`<div class="notice-row"><span class="notice-dot"></span><div><span class="kicker">Сообщение клиента</span><strong>${esc(b.room)} · ${esc(b.name)}</strong><span>${esc(preview||"Клиент написал в чате")} · нажмите, чтобы открыть</span></div></div>`;
+      E.partnerAlert.classList.add("show");clearTimeout(window.__partnerNoticeTimer);window.__partnerNoticeTimer=setTimeout(()=>E.partnerAlert.classList.remove("show"),9000);if(sound)playPartnerClick();
     }
     function partnerNoticeItems(){
       const notice=partnerNotice();
@@ -2053,6 +2147,12 @@
         if(E.modal.classList.contains("open")&&E.modalContent.querySelector(".partner-cabinet")){partnerBookingFilter="booked";renderPartnerCabinet(true)}
       }
     }
+    function notifyPartnerChat(b,text){
+      if(!partnerRoomIds().some(id=>bookingContainsRoom(b,id)))return;
+      const prev=partnerNotice(),created=new Date().toISOString(),preview=String(text||"").slice(0,90),item={id:`PN-${Date.now().toString(36)}`,bookingId:b.id,type:"chat",preview,room:b.room,name:b.name,date:b.date,time:b.time,created,read:false};
+      savePartnerNotice({...prev,unread:(prev.unread||0)+1,lastId:b.id,type:"chat",updated:created,items:[item,...(Array.isArray(prev.items)?prev.items:[])].slice(0,40)});
+      if(read(store.partnerAuth,null))showPartnerChatNotice(b,preview);
+    }
     function notifyPartnerModeration(item,status){
       const prev=partnerNotice(),created=new Date().toISOString(),type=status==="approved"?"moderation_approved":"moderation_rejected";
       const noticeItem={id:`PN-${Date.now().toString(36)}`,moderationId:item.id,type,room:item.targetTitle||"Карточка площадки",detail:moderationStatusLabel(status),created,read:false};
@@ -2081,11 +2181,12 @@
       if((partnerData().venue.cabinetStatus||"active")==="paused")return renderPartnerPaused();
       const items=partnerNoticeItems();
       markPartnerNoticesRead();
-      const rows=items.map(x=>{const moderation=x.type==="moderation_approved"||x.type==="moderation_rejected",title=x.type==="payment"?"Предоплата внесена":x.type==="moderation_approved"?"Изменения одобрены":x.type==="moderation_rejected"?"Изменения отклонены":"Новая заявка",target=moderation?`moderation:${x.moderationId}`:x.bookingId,details=moderation?`${x.room||"Карточка площадки"} · ${x.detail||"решение принято"}`:`${x.room||"помещение"} · ${x.name||"клиент"} · ${x.date||""} ${x.time?`в ${x.time}`:""}`;return `<button class="notification-item ${x.read?"":"unread"}" data-partner-notice="${esc(target)}" type="button"><span class="notice-dot"></span><span><strong>${title}</strong><span>${esc(details)}</span></span><time>${new Date(x.created).toLocaleString("ru-RU",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})}</time></button>`}).join("");
-      openModal(`<div class="admin-item-head"><div><span class="kicker">Кабинет партнёра</span><h2 style="margin:4px 0 6px">Уведомления площадки</h2><p class="muted" style="margin:0">Заявки, предоплаты и решения Rooms по изменениям карточки.</p></div><button class="btn" data-partner-back type="button">Назад</button></div><div class="notification-list">${rows||`<div class="empty" style="display:block">Уведомлений пока нет.</div>`}</div>`,true);
+      const rows=items.map(x=>{const moderation=x.type==="moderation_approved"||x.type==="moderation_rejected",chat=x.type==="chat",title=x.type==="payment"?"Предоплата внесена":chat?"Новое сообщение клиента":x.type==="moderation_approved"?"Изменения одобрены":x.type==="moderation_rejected"?"Изменения отклонены":"Новая заявка",target=moderation?`moderation:${x.moderationId}`:chat?`chat:${x.bookingId}|partner`:x.bookingId,details=moderation?`${x.room||"Карточка площадки"} · ${x.detail||"решение принято"}`:chat?(x.preview||"Клиент написал в чате"):`${x.room||"помещение"} · ${x.name||"клиент"} · ${x.date||""} ${x.time?`в ${x.time}`:""}`;return `<button class="notification-item ${x.read?"":"unread"}" data-partner-notice="${esc(target)}" type="button"><span class="notice-dot"></span><span><strong>${title}</strong><span>${esc(details)}</span></span><time>${new Date(x.created).toLocaleString("ru-RU",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})}</time></button>`}).join("");
+      openModal(`<div class="admin-item-head"><div><span class="kicker">Кабинет партнёра</span><h2 style="margin:4px 0 6px">Уведомления площадки</h2><p class="muted" style="margin:0">Заявки, сообщения, предоплаты и решения Rooms по изменениям карточки.</p></div><button class="btn" data-partner-back type="button">Назад</button></div><div class="notification-list">${rows||`<div class="empty" style="display:block">Уведомлений пока нет.</div>`}</div>`,true);
     }
     function openPartnerNoticeBooking(id){
       if(String(id||"").startsWith("moderation:")){openPartnerModeration();return}
+      if(String(id||"").startsWith("chat:")){renderBookingChat(String(id).slice(5));return}
       const b=read(store.bookings,[]).find(x=>x.id===id);
       if(!b)return toast("Заявка из уведомления больше недоступна.");
       partnerBookingFilter=partnerBookingGroup(b);
@@ -2396,7 +2497,7 @@
       const pendingNotice=partnerNotice().unread?latestPartnerNoticeBooking():null;
       if(pendingNotice)partnerBookingFilter=partnerBookingGroup(pendingNotice);
       renderPartnerCabinet();
-      if(pendingNotice)(partnerNotice().type==="payment"?showPartnerPaymentNotice:showPartnerNotice)(pendingNotice,{sound:false});
+      if(pendingNotice){const type=partnerNotice().type;if(type==="payment")showPartnerPaymentNotice(pendingNotice,{sound:false});else if(type==="chat")showPartnerChatNotice(pendingNotice,"",{sound:false});else showPartnerNotice(pendingNotice,{sound:false})}
       toast("Вы вошли в кабинет партнёра.");
     }
     function openPartner(){read(store.partnerAuth,null)?renderPartnerCabinet():renderPartnerLogin()}
@@ -2844,6 +2945,7 @@
     E.modalClose.addEventListener("click",closeModal);
     E.modal.addEventListener("click",e=>{if(e.target===E.modal)closeModal()});
     E.partnerForm.addEventListener("submit",e=>{e.preventDefault();const lead={id:`P-${Date.now().toString().slice(-6)}`,city:$("partnerCity").value,venue:$("partnerVenue").value,address:$("partnerAddress").value,name:$("partnerName").value,phone:$("partnerPhone").value,email:$("partnerEmail").value,type:$("partnerType").value,rooms:Number($("partnerRooms").value)||1,comment:$("partnerComment").value,status:"new",created:new Date().toISOString()};write(store.partner,[lead,...read(store.partner,[])]);logActivity("partner_lead","Новая заявка партнёра",`${lead.venue} · ${lead.city} · ${lead.rooms} помещений`);E.partnerStatus.textContent="Заявка отправлена";toast("Спасибо. Мы свяжемся с площадкой.");E.partnerForm.reset();$("partnerCity").value=state.city});
+    document.addEventListener("submit",e=>{if(e.target.id==="bookingChatForm"){e.preventDefault();submitBookingChat(e.target)}});
     document.addEventListener("submit",e=>{if(e.target.matches("[data-booking-note-form]")){e.preventDefault();saveBookingNote(e.target)}if(e.target.matches("[data-review-reply-form]")){e.preventDefault();saveReviewReply(e.target)}if(e.target.id==="supportForm"){e.preventDefault();submitSupportCase(e.target)}if(e.target.id==="bookingForm"){e.preventDefault();submitBooking(e.target)}if(e.target.id==="proposalForm"){e.preventDefault();submitProposal(e.target)}if(e.target.id==="cancelBookingForm"){e.preventDefault();submitCancelBooking(e.target)}if(e.target.id==="reviewForm"){e.preventDefault();submitReview(e.target)}if(e.target.id==="loginForm"){e.preventDefault();login(e.target)}if(e.target.id==="registerForm"){e.preventDefault();register(e.target)}if(e.target.id==="personalDataForm"){e.preventDefault();savePersonalData(e.target)}if(e.target.id==="partnerLoginForm"){e.preventDefault();partnerLogin(e.target)}if(e.target.id==="partnerVenueEdit"){e.preventDefault();savePartnerVenue(e.target)}if(e.target.id==="partnerSpecialHours"){e.preventDefault();savePartnerSpecialHours(e.target)}if(e.target.id==="partnerRoomCreate"){e.preventDefault();createPartnerRoom(e.target)}if(e.target.id==="partnerRoomEdit"){e.preventDefault();savePartnerRoom(e.target)}if(e.target.id==="partnerBusyCreate"){e.preventDefault();createPartnerManualBusy(e.target)}});
     document.addEventListener("change",e=>{if(e.target.matches("[data-special-mode]")){const fields=e.target.form?.querySelector("[data-special-fields]");if(fields)fields.hidden=e.target.value!=="custom";return}if(e.target.matches('[name^="work_"][name$="_enabled"]')){e.target.closest(".schedule-day")?.classList.toggle("off",!e.target.checked);return}if(e.target.matches("[data-proposal-date],[data-proposal-time],[data-proposal-hours]")){updateProposalForm(e.target.form);return}if(e.target.matches("[data-booking-date],[data-booking-time],[data-booking-hours],[data-booking-service],[data-booking-extra-room]")){updateBookingForm(e.target.form);return}if(e.target.matches("[data-detail-service]")){toggleDetailService(e.target);return}if(e.target.matches("[data-detail-extra-room]")){toggleDetailExtraRoom(e.target);return}if(e.target.matches("[data-detail-date]")){state.date=e.target.value;state.time="";E.date.value=state.date;syncDateDisplay();renderSpace(e.target.dataset.detailDate,true)}if(e.target.matches("[data-detail-hours]")){state.hours=Number(e.target.value);E.hours.value=String(state.hours);renderSpace(e.target.dataset.detailHours,true)}if(e.target.matches("[data-admin-booking-event]")){adminBookingEventFilter=e.target.value;renderAdminDashboard(true);return}if(e.target.matches("[data-partner-booking-event]")){partnerBookingEventFilter=e.target.value;renderPartnerCabinet(true);return}if(e.target.matches("[data-partner-busy-room]")){state.partnerRoom=e.target.value;renderPartnerCabinet(true)}if(e.target.matches("[data-partner-busy-date]")){state.partnerDate=e.target.value;state.partnerWeekStart=e.target.value;renderPartnerCabinet(true)}if(e.target.matches("[data-photo-upload]"))handlePhotoUpload(e.target)});
     document.addEventListener("click",e=>{
@@ -2866,6 +2968,8 @@
       const busyDelete=e.target.closest("[data-busy-delete]");if(busyDelete){deletePartnerManualBusy(busyDelete.dataset.busyDelete);return}
       const photoDelete=e.target.closest("[data-photo-delete]");if(photoDelete){deletePartnerPhoto(photoDelete.dataset.photoDelete);return}
       const exportButton=e.target.closest("[data-export]");if(exportButton){exportBookings(exportButton.dataset.export);return}
+      const bookingChat=e.target.closest("[data-booking-chat]");if(bookingChat){renderBookingChat(bookingChat.dataset.bookingChat);return}
+      const chatBack=e.target.closest("[data-chat-back]");if(chatBack){const area=chatBack.dataset.chatBack;if(area==="profile")renderProfile(true);else if(area==="partner")renderPartnerCabinet(true);else renderAdminDashboard(true);return}
       const supportCase=e.target.closest("[data-support-case]");if(supportCase){renderSupportCase(supportCase.dataset.supportCase);return}
       const supportStatus=e.target.closest("[data-support-status]");if(supportStatus){updateSupportStatus(supportStatus.dataset.supportStatus);return}
       const bookingStatus=e.target.closest("[data-booking-status]");if(bookingStatus){updateBookingStatus(bookingStatus.dataset.bookingStatus,bookingStatus.dataset.bookingAfter||"admin");return}
@@ -2895,7 +2999,7 @@
       if(e.target.closest("[data-profile-favorites]"))renderFavorites();
       if(e.target.closest("[data-profile-personal]"))renderPersonalData();
       if(e.target.closest("[data-profile-back]"))renderProfile();
-      const userNotice=e.target.closest("[data-user-notice]");if(userNotice){const b=read(store.bookings,[]).find(x=>x.id===userNotice.dataset.userNotice);if(!b){toast("Заявка из уведомления больше недоступна.");return}profileBookingFilter=profileBookingGroup(b);renderProfile(true);return}
+      const userNotice=e.target.closest("[data-user-notice]");if(userNotice){const target=userNotice.dataset.userNotice;if(String(target).startsWith("chat:")){renderBookingChat(String(target).slice(5));return}const b=read(store.bookings,[]).find(x=>x.id===target);if(!b){toast("Заявка из уведомления больше недоступна.");return}profileBookingFilter=profileBookingGroup(b);renderProfile(true);return}
       if(e.target.closest("[data-partner-notifications]"))renderPartnerNotifications();
       if(e.target.closest("[data-partner-back]"))renderPartnerCabinet();
       const partnerNoticeItem=e.target.closest("[data-partner-notice]");if(partnerNoticeItem){openPartnerNoticeBooking(partnerNoticeItem.dataset.partnerNotice);return}

@@ -23,6 +23,11 @@
       --green:#b85f4d;
       --green-2:#d57865;
       --mint:#f8ebe6;
+      --available-bg:#e7f3ea;
+      --available-ink:#245b39;
+      --available-line:#a9cdb4;
+      --busy-bg:#e9e5e2;
+      --busy-ink:#645c57;
       --cream:#fff4de;
       --shadow:0 28px 70px rgba(78,42,31,.15);
       --soft:0 12px 34px rgba(78,42,31,.08);
@@ -311,12 +316,13 @@
     .price-box{position:sticky;top:86px}
     .windows{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
     .window{
-      min-height:38px;border:1px solid transparent;border-radius:999px;background:var(--mint);
-      color:var(--green);padding:0 12px;font-size:13px;font-weight:900;transition:.18s ease;
+      min-height:40px;border:1px solid var(--available-line);border-radius:999px;background:var(--available-bg);
+      color:var(--available-ink);padding:0 13px;font-size:13px;font-weight:900;transition:.18s ease;
     }
-    .window:hover{border-color:#e1b5a7;background:#fff}
+    .window:hover{border-color:#6da17d;background:#f6fbf7;box-shadow:0 5px 14px rgba(36,91,57,.12);transform:translateY(-1px)}
     .window:active{transform:scale(.98)}
-    .window.active{border-color:var(--green);background:var(--green);color:#fff}
+    .window.active{border-color:var(--green);background:var(--green);color:#fff;box-shadow:0 7px 18px rgba(184,95,77,.24)}
+    .window.active::after{content:"Выбрано";margin-left:7px;font-size:10px;font-weight:850;opacity:.86}
     .availability-week{display:flex;gap:8px;margin-top:10px;overflow:auto;padding-bottom:3px;scrollbar-width:none}
     .availability-week::-webkit-scrollbar{display:none}
     .availability-day{
@@ -336,18 +342,21 @@
     .day-timeline.empty{display:block;padding:12px;color:var(--muted);font-size:13px;font-weight:850}
     .day-segment{
       min-width:18px;height:44px;display:flex;align-items:center;justify-content:center;border-radius:11px;
-      padding:0 6px;font-size:11px;font-weight:950;line-height:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+      padding:0 6px;border:1px solid transparent;font-size:11px;font-weight:950;line-height:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
     }
-    .day-segment.free{background:var(--mint);color:var(--green)}
-    .day-segment.busy{background:#f2ded8;color:#9b6048}
-    .day-segment.selected{outline:2px solid var(--green);outline-offset:-2px;background:#fff;color:var(--green)}
+    button.day-segment.free{background:var(--available-bg);border-color:var(--available-line);color:var(--available-ink);transition:.18s ease}
+    button.day-segment.free:hover{background:#f6fbf7;border-color:#6da17d;box-shadow:inset 0 0 0 1px #6da17d}
+    button.day-segment.free:active{transform:scale(.98)}
+    .day-segment.busy{background:repeating-linear-gradient(135deg,var(--busy-bg) 0 7px,#dfdad7 7px 14px);color:var(--busy-ink)}
+    button.day-segment.selected{border-color:var(--green);background:var(--green);color:#fff;box-shadow:inset 0 0 0 1px rgba(255,255,255,.24)}
+    button.day-segment.selected:hover{border-color:var(--green);background:var(--green);box-shadow:inset 0 0 0 1px rgba(255,255,255,.24),0 5px 14px rgba(184,95,77,.2)}
     .timeline-caption,.timeline-legend{display:flex;flex-wrap:wrap;gap:8px;align-items:center;color:var(--muted);font-size:12px;font-weight:800}
     .timeline-caption{justify-content:space-between;margin-top:8px}
     .timeline-legend{margin-top:7px}
-    .timeline-legend i{width:9px;height:9px;border-radius:50%;display:inline-block;margin-right:5px}
-    .timeline-legend i.free{background:var(--mint);box-shadow:inset 0 0 0 1px #d9c9bd}
-    .timeline-legend i.busy{background:#f2ded8}
-    .timeline-legend i.selected{background:#fff;box-shadow:0 0 0 2px var(--green)}
+    .timeline-legend i{width:11px;height:11px;border-radius:3px;display:inline-block;margin-right:5px}
+    .timeline-legend i.free{background:var(--available-bg);box-shadow:inset 0 0 0 1px var(--available-line)}
+    .timeline-legend i.busy{background:repeating-linear-gradient(135deg,var(--busy-bg) 0 3px,#d8d2ce 3px 6px);box-shadow:inset 0 0 0 1px #cec7c3}
+    .timeline-legend i.selected{background:var(--green);box-shadow:inset 0 0 0 1px var(--green)}
     .note{margin:10px 0 0;color:var(--muted);font-size:13px;line-height:1.5}
     .room-list{display:grid;gap:10px}
     .room-option{
@@ -1570,7 +1579,11 @@
       const {work,segments}=dayTimelineSegments(r,date);
       if(!work)return `<div class="day-timeline empty">В этот день площадка не работает или закрыта вручную.</div>`;
       const selected=chosen?slotHour(r,chosen,date):null,total=work[1]-work[0],free=segments.filter(x=>x.type==="free").reduce((s,x)=>s+x.b-x.a,0),busy=Math.max(0,total-free);
-      const body=segments.map(x=>{const len=Math.max(.5,x.b-x.a),isSelected=x.type==="free"&&selected!==null&&selected>=x.a&&selected<x.b,label=x.b-x.a>=2?intervalText(x.a,x.b):hourLabel(x.a);return `<span class="day-segment ${x.type} ${isSelected?"selected":""}" style="flex:${len} 1 0" title="${x.type==="free"?"Свободно":"Занято"}: ${intervalText(x.a,x.b)}">${label}</span>`}).join("");
+      const body=segments.map(x=>{
+        const len=Math.max(.5,x.b-x.a),isSelected=x.type==="free"&&selected!==null&&selected>=x.a&&selected<x.b,label=x.b-x.a>=2?intervalText(x.a,x.b):hourLabel(x.a),style=`flex:${len} 1 0`;
+        if(x.type==="free")return `<button class="day-segment free ${isSelected?"selected":""}" data-window="${r.id}|${hourLabel(x.a)}" type="button" style="${style}" aria-pressed="${isSelected}" aria-label="Свободно ${intervalText(x.a,x.b)}. Выбрать начало в ${hourLabel(x.a)}" title="Свободно: ${intervalText(x.a,x.b)}. Нажмите, чтобы выбрать">${label}</button>`;
+        return `<span class="day-segment busy" style="${style}" aria-label="Занято ${intervalText(x.a,x.b)}" title="Занято: ${intervalText(x.a,x.b)}">${label}</span>`;
+      }).join("");
       return `<div class="timeline-caption"><span>День: ${intervalText(work[0],work[1])}</span><span>${durationText(free)} свободно · ${durationText(busy)} занято</span></div><div class="day-timeline" aria-label="Доступность помещения на выбранный день">${body}</div><div class="timeline-legend"><span><i class="free"></i>свободно</span><span><i class="busy"></i>занято</span><span><i class="selected"></i>выбранное окно</span></div>`;
     }
     function betterWindow(r,date,chosen,max){return freeWindows(r,date).filter(w=>w.max>max&&w.time!==chosen).sort((a,b)=>b.max-a.max)[0]}
@@ -1931,6 +1944,8 @@
       let chosen=state.time||"",max=chosen?capacity(r,state.date,chosen):0,note="";
       if(!chosen&&wins.length){const first=wins.find(w=>w.max>=Math.max(r.min,Number(state.hours)||r.min))||wins[0];chosen=first.time;max=first.max}
       else if(!max&&wins.length){const n=wins.find(w=>hour(w.time)>=hour(chosen))||wins[0];note=`Выбранное время ${chosen} занято. Ближайшее свободное окно: ${n.time}.`;chosen=n.time;state.time=chosen;max=n.max}
+      state.time=chosen;
+      if(E.time)E.time.value=chosen;
       const wanted=Number(state.hours),hours=max?Math.min(Math.max(r.min,wanted),max):wanted;
       state.hours=hours;
       if(max&&wanted>max)note=`С ${chosen} можно занять помещение только на ${max} ч.`;
@@ -1956,7 +1971,7 @@
           <div class="form"><div class="field"><label>Дата</label><input data-detail-date="${r.id}" type="date" min="${today}" value="${state.date}"></div><div class="field"><label>На сколько часов</label><select data-detail-hours="${r.id}">${[1,2,3,4,5,6].map(x=>`<option value="${x}" ${x===hours?"selected":""} ${(x<r.min||max&&x>max)?"disabled":""}>${x} ${x===1?"час":x<5?"часа":"часов"}</option>`).join("")}</select></div></div>
           ${roomDayTimeline(r,state.date,chosen)}
           <h3 style="margin:14px 0 0">Свободные окна</h3>
-          <div class="windows">${wins.length?wins.map(w=>`<button class="window ${w.time===chosen?"active":""}" data-window="${r.id}|${w.time}" type="button">${w.time} · до ${w.max} ч</button>`).join(""):`<span class="window">Нет окон на эту дату</span>`}</div>
+          <div class="windows">${wins.length?wins.map(w=>`<button class="window ${w.time===chosen?"active":""}" data-window="${r.id}|${w.time}" type="button" aria-pressed="${w.time===chosen}">${w.time} · до ${w.max} ч</button>`).join(""):`<span class="window">Нет окон на эту дату</span>`}</div>
           ${note?`<p class="note">${esc(note)}</p>`:""}
           ${roomServicePicker(r)}
           <div class="service-summary"><div class="row"><span class="muted">${hours} ч × ${money(r.price)}</span><strong>${money(baseTotal)}</strong></div>${pickedServices.map(x=>`<div class="row"><span class="muted">${esc(x.name)}</span><strong>+ ${money(x.price)}</strong></div>`).join("")}<div class="row total-row"><span>Итого</span><strong>${money(total)}</strong></div><div class="row"><span class="muted">Предоплата 30% после подтверждения</span><strong>${money(prepay)}</strong></div></div>

@@ -330,6 +330,24 @@
     .availability-day span{font-size:12px;font-weight:900;text-transform:capitalize}
     .availability-day strong{display:block;margin-top:3px;font-size:15px}
     .availability-day small{margin-top:5px;color:inherit;font-size:11px;line-height:1.35;opacity:.78}
+    .day-timeline{
+      display:flex;gap:3px;margin-top:12px;border:1px solid var(--line);border-radius:16px;background:#fff;padding:5px;overflow:hidden;
+    }
+    .day-timeline.empty{display:block;padding:12px;color:var(--muted);font-size:13px;font-weight:850}
+    .day-segment{
+      min-width:18px;height:44px;display:flex;align-items:center;justify-content:center;border-radius:11px;
+      padding:0 6px;font-size:11px;font-weight:950;line-height:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+    }
+    .day-segment.free{background:var(--mint);color:var(--green)}
+    .day-segment.busy{background:#f2ded8;color:#9b6048}
+    .day-segment.selected{outline:2px solid var(--green);outline-offset:-2px;background:#fff;color:var(--green)}
+    .timeline-caption,.timeline-legend{display:flex;flex-wrap:wrap;gap:8px;align-items:center;color:var(--muted);font-size:12px;font-weight:800}
+    .timeline-caption{justify-content:space-between;margin-top:8px}
+    .timeline-legend{margin-top:7px}
+    .timeline-legend i{width:9px;height:9px;border-radius:50%;display:inline-block;margin-right:5px}
+    .timeline-legend i.free{background:var(--mint);box-shadow:inset 0 0 0 1px #d9c9bd}
+    .timeline-legend i.busy{background:#f2ded8}
+    .timeline-legend i.selected{background:#fff;box-shadow:0 0 0 2px var(--green)}
     .note{margin:10px 0 0;color:var(--muted);font-size:13px;line-height:1.5}
     .room-list{display:grid;gap:10px}
     .room-option{
@@ -886,7 +904,7 @@
     function shortDateLabel(value){return new Intl.DateTimeFormat("ru-RU",{day:"numeric",month:"short"}).format(new Date(`${value}T12:00:00`)).replace(".","")}
     function syncDateDisplay(){if(E.dateDisplay)E.dateDisplay.textContent=dateLabel(E.date.value)}
     function hour(t){return Number(String(t).slice(0,2))}
-    function hourLabel(h){return `${String(((Number(h)%24)+24)%24).padStart(2,"0")}:00`}
+    function hourLabel(h){const total=Math.round((((Number(h)%24)+24)%24)*60),hh=Math.floor(total/60)%24,mm=total%60;return `${String(hh).padStart(2,"0")}:${String(mm).padStart(2,"0")}`}
     function hourSuffix(h){return Number(h)>=24?" +1 день":""}
     function hourOptionList(value,from=6,to=24){return Array.from({length:to-from+1},(_,i)=>{const h=from+i;return `<option value="${h}" ${Number(value)===h?"selected":""}>${hourLabel(h)}${hourSuffix(h)}</option>`}).join("")}
     function dateScheduleException(r,date){return date?(r?.specialHours?.[date]||venue(r)?.specialHours?.[date]||null):null}
@@ -1364,15 +1382,38 @@
     function capacity(r,date,t){return capacityAtHour(r,date,slotHour(r,t,date))}
     function freeWindows(r,date){const work=effectiveWork(r,date),arr=[];if(!work)return arr;for(let h=work[0];h<work[1];h++){const time=hourLabel(h),max=capacityAtHour(r,date,h);if(max>=r.min)arr.push({time,max})}return arr}
     function dayAvailability(r,date){
-      const wins=freeWindows(r,date),best=wins.reduce((m,w)=>Math.max(m,w.max),0),freeHours=wins.reduce((s,w)=>s+w.max,0);
-      return {date,wins,best,freeHours};
+      const wins=freeWindows(r,date),best=wins.reduce((m,w)=>Math.max(m,w.max),0);
+      return {date,wins,best};
     }
     function availabilityWeek(r,selected=state.date){
       const start=selected&&selected>=today?selected:today;
       return Array.from({length:7},(_,i)=>dayAvailability(r,shiftDate(start,i))).map(x=>`<button class="availability-day ${x.date===selected?"active":""} ${x.wins.length?"":"empty"}" data-availability-day="${r.id}|${x.date}" type="button"><span>${weekdayLabel(x.date)}</span><strong>${shortDateLabel(x.date)}</strong><small>${x.wins.length?`${x.wins.length} окон · до ${x.best} ${hourWord(x.best)}`:"нет окон"}</small></button>`).join("");
     }
+    function dayTimelineSegments(r,date){
+      const work=effectiveWork(r,date);if(!work)return {work:null,segments:[]};
+      const [start,end]=work,merged=[];
+      blocked(r,date).forEach(([a,b])=>{
+        a=Math.max(start,Number(a));b=Math.min(end,Number(b));
+        if(b<=a)return;
+        const last=merged[merged.length-1];
+        if(last&&a<=last[1])last[1]=Math.max(last[1],b);
+        else merged.push([a,b]);
+      });
+      const segments=[];let cursor=start;
+      merged.forEach(([a,b])=>{if(a>cursor)segments.push({type:"free",a:cursor,b:a});segments.push({type:"busy",a,b});cursor=Math.max(cursor,b)});
+      if(cursor<end)segments.push({type:"free",a:cursor,b:end});
+      return {work,segments};
+    }
+    function roomDayTimeline(r,date,chosen=""){
+      const {work,segments}=dayTimelineSegments(r,date);
+      if(!work)return `<div class="day-timeline empty">В этот день площадка не работает или закрыта вручную.</div>`;
+      const selected=chosen?slotHour(r,chosen,date):null,total=work[1]-work[0],free=segments.filter(x=>x.type==="free").reduce((s,x)=>s+x.b-x.a,0),busy=Math.max(0,total-free);
+      const body=segments.map(x=>{const len=Math.max(.5,x.b-x.a),isSelected=x.type==="free"&&selected!==null&&selected>=x.a&&selected<x.b,label=x.b-x.a>=2?intervalText(x.a,x.b):hourLabel(x.a);return `<span class="day-segment ${x.type} ${isSelected?"selected":""}" style="flex:${len} 1 0" title="${x.type==="free"?"Свободно":"Занято"}: ${intervalText(x.a,x.b)}">${label}</span>`}).join("");
+      return `<div class="timeline-caption"><span>День: ${intervalText(work[0],work[1])}</span><span>${durationText(free)} свободно · ${durationText(busy)} занято</span></div><div class="day-timeline" aria-label="Доступность помещения на выбранный день">${body}</div><div class="timeline-legend"><span><i class="free"></i>свободно</span><span><i class="busy"></i>занято</span><span><i class="selected"></i>выбранное окно</span></div>`;
+    }
     function betterWindow(r,date,chosen,max){return freeWindows(r,date).filter(w=>w.max>max&&w.time!==chosen).sort((a,b)=>b.max-a.max)[0]}
     function hourWord(n){return n===1?"час":n<5?"часа":"часов"}
+    function durationText(n){const value=Number(n)||0,h=Math.floor(value),m=Math.round((value-h)*60);return [h?`${h} ${hourWord(h)}`:"",m?`${m} мин`:""].filter(Boolean).join(" ")||"0 часов"}
     function bookingHourList(r,date,time){
       const max=capacity(r,date,time),limit=Math.min(6,max),start=Math.max(1,r.min),list=[];
       for(let h=start;h<=limit;h++)list.push(h);
@@ -1749,6 +1790,7 @@
           <span class="muted">Расчёт</span><h2 style="margin:4px 0 12px">${money(total)}</h2>
           <div class="availability-week">${availabilityWeek(r,state.date)}</div>
           <div class="form"><div class="field"><label>Дата</label><input data-detail-date="${r.id}" type="date" min="${today}" value="${state.date}"></div><div class="field"><label>На сколько часов</label><select data-detail-hours="${r.id}">${[1,2,3,4,5,6].map(x=>`<option value="${x}" ${x===hours?"selected":""} ${(x<r.min||max&&x>max)?"disabled":""}>${x} ${x===1?"час":x<5?"часа":"часов"}</option>`).join("")}</select></div></div>
+          ${roomDayTimeline(r,state.date,chosen)}
           <h3 style="margin:14px 0 0">Свободные окна</h3>
           <div class="windows">${wins.length?wins.map(w=>`<button class="window ${w.time===chosen?"active":""}" data-window="${r.id}|${w.time}" type="button">${w.time} · до ${w.max} ч</button>`).join(""):`<span class="window">Нет окон на эту дату</span>`}</div>
           ${note?`<p class="note">${esc(note)}</p>`:""}

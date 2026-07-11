@@ -276,6 +276,17 @@
     .close{width:42px;height:42px;border:1px solid var(--line);border-radius:50%;background:#fff;font-weight:900;font-size:20px}
     .modal-content{display:grid;gap:18px;padding:8px 20px 22px}
     .modal-content>*{min-width:0}
+    .modal.workspace{display:block;padding:0;background:var(--paper);overflow:hidden}
+    .modal.workspace .modal-box{width:100%;height:100dvh;max-height:none;border:0;border-radius:0;box-shadow:none;background:var(--paper)}
+    .modal.workspace .modal-head{display:none}
+    .modal.workspace .modal-content{display:block;min-height:100%;padding:0}
+    .partner-page-bar{position:sticky;top:0;z-index:30;border-bottom:1px solid var(--line);background:rgba(255,254,251,.94);backdrop-filter:blur(18px)}
+    .partner-page-bar-inner{width:min(calc(100% - 40px),1440px);min-height:72px;display:flex;align-items:center;justify-content:space-between;gap:16px;margin:auto}
+    .partner-page-brand{display:flex;align-items:center;gap:11px;color:var(--ink)}
+    .partner-page-brand-mark{width:42px;height:42px;display:grid;place-items:center;border-radius:13px;background:var(--green);color:#fff;font-size:20px;font-weight:950}
+    .partner-page-brand strong,.partner-page-brand span{display:block}.partner-page-brand span{margin-top:2px;color:var(--muted);font-size:12px}
+    .partner-page-actions{display:flex;align-items:center;gap:8px}
+    .partner-page-main{width:min(calc(100% - 40px),1440px);margin:auto;padding:24px 0 44px}
     .space-layout{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(340px,.85fr);gap:18px;align-items:start}
     .gallery-wrap{position:relative}
     .gallery-main{
@@ -448,13 +459,14 @@
     .favorite-item p{margin:0;color:var(--muted);font-size:13px;line-height:1.45}
     .favorite-actions{grid-column:2;display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
     .favorite-actions .btn{min-height:38px;padding:0 12px}
-    .partner-cabinet{display:grid;gap:16px}
+    .partner-cabinet{width:100%;min-width:0;max-width:100%;display:grid;gap:16px;overflow:hidden}
+    .partner-cabinet>*{min-width:0;max-width:100%}
     .partner-title{max-width:820px}
     .partner-title h2{margin:4px 0 8px;font-size:34px;line-height:1.08}
     .partner-shell{display:grid;grid-template-columns:minmax(280px,.9fr) minmax(0,1.1fr);gap:14px;align-items:start}
     .partner-editor{
       border:1px solid rgba(234,222,216,.88);border-radius:18px;background:rgba(255,255,255,.94);box-shadow:0 10px 28px rgba(78,42,31,.055);
-      padding:16px;
+      min-width:0;max-width:100%;padding:16px;
     }
     .partner-editor h3{margin:0 0 10px}
     .partner-room-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:12px 0}
@@ -772,6 +784,10 @@
       .modal{padding:10px}
       .modal-box{border-radius:22px}
       .modal-content{padding:8px 12px 16px}
+      .modal.workspace{padding:0}.modal.workspace .modal-box{border-radius:0}
+      .partner-page-bar-inner,.partner-page-main{width:min(calc(100% - 22px),1440px)}
+      .partner-page-bar-inner{min-height:66px}.partner-page-brand span{display:none}.partner-page-actions .btn{min-height:40px;padding:0 11px}
+      .partner-page-main{padding:16px 0 32px}
       .gallery-slide{height:300px}
       .thumbs{display:none}
       .detail-title h2{font-size:34px}
@@ -1078,12 +1094,15 @@
     }
     function partnerAccounts(){return read(store.partnerAccounts,[])}
     function savePartnerAccounts(list){write(store.partnerAccounts,list.slice(0,100))}
+    const demoPartnerAccess={login:"manager@kids-loft.ru",password:"rooms2026"};
     function ensurePartnerAccounts(){
-      const list=partnerAccounts();if(list.some(x=>x.venueId==="kids-loft"))return list;
-      const demo={id:"PA-kids-loft",venueId:"kids-loft",venueTitle:"Kids Loft",login:"manager@kids-loft.ru",password:"rooms2026",mustChangePassword:false,status:"active",created:new Date().toISOString()};savePartnerAccounts([demo,...list]);return [demo,...list];
+      const list=partnerAccounts(),existing=list.find(x=>x.venueId==="kids-loft");
+      if(existing){const normalized={...existing,login:demoPartnerAccess.login,password:demoPartnerAccess.password,mustChangePassword:false,status:existing.status==="blocked"?"blocked":"active"},next=list.map(x=>x.id===existing.id?normalized:x);if(existing.login!==normalized.login||existing.password!==normalized.password||existing.mustChangePassword)savePartnerAccounts(next);return next}
+      const demo={id:"PA-kids-loft",venueId:"kids-loft",venueTitle:"Kids Loft",login:demoPartnerAccess.login,password:demoPartnerAccess.password,mustChangePassword:false,status:"active",created:new Date().toISOString()};savePartnerAccounts([demo,...list]);return [demo,...list];
     }
     function partnerAccountByLogin(login){const value=String(login||"").trim().toLowerCase();return ensurePartnerAccounts().find(x=>String(x.login||"").toLowerCase()===value)}
-    function currentPartnerAccount(){const auth=read(store.partnerAuth,null);return auth?ensurePartnerAccounts().find(x=>x.id===auth.accountId)||partnerAccountByLogin(auth.login):null}
+    function partnerAuthSession(){const auth=read(store.partnerAuth,null);return auth?.verified===true&&auth.accountId?auth:null}
+    function currentPartnerAccount(){const auth=partnerAuthSession();return auth?ensurePartnerAccounts().find(x=>x.id===auth.accountId)||null:null}
     function partnerTempPassword(lead){const digits=String(lead.phone||"").replace(/\D/g,"").slice(-4)||String(Date.now()).slice(-4);return `Rooms${digits}!`}
     function provisionPartnerAccount(lead){
       const login=String(lead.email||`partner-${String(lead.id).toLowerCase()}@rooms.local`).trim().toLowerCase(),list=ensurePartnerAccounts(),existing=list.find(x=>x.leadId===lead.id||x.login===login);if(existing){if(existing.status==="blocked"){const restored={...existing,status:existing.venueId?"active":"setup"};savePartnerAccounts(list.map(x=>x.id===existing.id?restored:x));return restored}return existing}
@@ -1756,7 +1775,7 @@
       const [id,area="profile"]=String(payload||"").split("|"),b=adminBookings().find(x=>x.id===id),actor=chatActorForArea(area),acc=current();
       if(!b)return toast("Заявка для чата не найдена.");
       if(area==="profile"&&(!acc||isAdmin(acc)||phone(acc.phone)!==phone(b.phone)))return renderAuth();
-      if(area==="partner"&&(!read(store.partnerAuth,null)||!partnerRoomIds().some(roomId=>bookingContainsRoom(b,roomId))))return renderPartnerLogin();
+      if(area==="partner"&&(!currentPartnerAccount()||!partnerRoomIds().some(roomId=>bookingContainsRoom(b,roomId))))return renderPartnerLogin();
       if(area==="admin"&&!isAdmin(acc))return toast("Чат доступен администратору Rooms.");
       markChatRead(id,area);markChatNoticesRead(id,area);
       const thread=bookingChat(id),paid=hasPaymentRecord(b),closed=chatClosed(b),messages=thread.messages.map(x=>`<div class="chat-message ${esc(x.actor)}"><strong>${x.actor===actor?"Вы":chatActorLabel(x.actor)}</strong><span>${esc(x.text).replace(/\n/g,"<br>")}</span><time>${new Date(x.created).toLocaleString("ru-RU",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})}</time></div>`).join("");
@@ -2221,6 +2240,7 @@
       </article>`;
     }
     function openModal(html,small=false,reset=true){
+      E.modal.classList.remove("workspace");
       E.modalBox.classList.toggle("small",small);
       E.modalContent.innerHTML=html;
       E.modal.classList.add("open");
@@ -2228,7 +2248,12 @@
       document.body.classList.add("lock");
       if(reset)E.modalBox.scrollTop=0;
     }
-    function closeModal(){E.modal.classList.remove("open");E.modal.setAttribute("aria-hidden","true");document.body.classList.remove("lock")}
+    const partnerRoute="#partner-cabinet";
+    function partnerWorkspaceHeader(){const account=currentPartnerAccount();return `<header class="partner-page-bar"><div class="partner-page-bar-inner"><div class="partner-page-brand"><span class="partner-page-brand-mark">R</span><div><strong>Rooms для партнёров</strong><span>${esc(account?.venueTitle||"Кабинет площадки")}</span></div></div><div class="partner-page-actions"><button class="btn soft" data-partner-site type="button">На сайт</button><button class="btn" data-partner-logout type="button">Выйти</button></div></div></header>`}
+    function openPartnerWorkspace(html,reset=true){openModal(`${partnerWorkspaceHeader()}<main class="partner-page-main">${html}</main>`,false,reset);E.modal.classList.add("workspace");if(location.hash!==partnerRoute)history.pushState({roomsPartner:true},"",partnerRoute)}
+    function closeModal(){E.modal.classList.remove("open","workspace");E.modal.setAttribute("aria-hidden","true");document.body.classList.remove("lock")}
+    function requestCloseModal(){if(location.hash===partnerRoute&&currentPartnerAccount()&&!E.modal.classList.contains("workspace"))return renderPartnerCabinet();closeModal()}
+    function leavePartnerWorkspace(section=""){closeModal();const hash=section?`#${section}`:"";history.pushState(null,"",`${location.pathname}${location.search}${hash}`);if(section)requestAnimationFrame(()=>document.getElementById(section)?.scrollIntoView({behavior:"smooth",block:"start"}))}
     function toast(msg){E.toast.textContent=msg;E.toast.classList.add("show");clearTimeout(window.__t);window.__t=setTimeout(()=>E.toast.classList.remove("show"),3200)}
     function playPartnerClick(){
       try{
@@ -2379,7 +2404,7 @@
       if(!partnerRoomIds().some(id=>bookingContainsRoom(b,id)))return;
       const prev=partnerNotice(),created=new Date().toISOString(),item={id:`PN-${Date.now().toString(36)}`,bookingId:b.id,type:"booking",room:b.room,name:b.name,date:b.date,time:b.time,created,read:false};
       savePartnerNotice({...prev,unread:(prev.unread||0)+1,lastId:b.id,type:"booking",updated:created,items:[item,...(Array.isArray(prev.items)?prev.items:[])].slice(0,40)});
-      if(read(store.partnerAuth,null)){
+      if(currentPartnerAccount()){
         showPartnerNotice(b);
         if(E.modal.classList.contains("open")&&E.modalContent.querySelector(".partner-cabinet")){partnerBookingFilter="new";renderPartnerCabinet(true)}
       }
@@ -2388,7 +2413,7 @@
       if(!partnerRoomIds().some(id=>bookingContainsRoom(b,id)))return;
       const prev=partnerNotice(),created=new Date().toISOString(),item={id:`PN-${Date.now().toString(36)}`,bookingId:b.id,type:"payment",room:b.room,name:b.name,date:b.date,time:b.time,created,read:false};
       savePartnerNotice({...prev,unread:(prev.unread||0)+1,lastId:b.id,type:"payment",updated:created,items:[item,...(Array.isArray(prev.items)?prev.items:[])].slice(0,40)});
-      if(read(store.partnerAuth,null)){
+      if(currentPartnerAccount()){
         showPartnerPaymentNotice(b);
         if(E.modal.classList.contains("open")&&E.modalContent.querySelector(".partner-cabinet")){partnerBookingFilter="booked";renderPartnerCabinet(true)}
       }
@@ -2397,19 +2422,19 @@
       if(!partnerRoomIds().some(id=>bookingContainsRoom(b,id)))return;
       const prev=partnerNotice(),created=new Date().toISOString(),preview=String(text||"").slice(0,90),item={id:`PN-${Date.now().toString(36)}`,bookingId:b.id,type:"chat",preview,room:b.room,name:b.name,date:b.date,time:b.time,created,read:false};
       savePartnerNotice({...prev,unread:(prev.unread||0)+1,lastId:b.id,type:"chat",updated:created,items:[item,...(Array.isArray(prev.items)?prev.items:[])].slice(0,40)});
-      if(read(store.partnerAuth,null))showPartnerChatNotice(b,preview);
+      if(currentPartnerAccount())showPartnerChatNotice(b,preview);
     }
     function notifyPartnerPayout(batch){
       const data=partnerData();if(batch.venueId!==data.venue.id)return;
       const prev=partnerNotice(),created=new Date().toISOString(),type=batch.status==="paid"?"payout_paid":"payout_sent",item={id:`PN-${Date.now().toString(36)}`,payoutId:batch.id,type,room:batch.venueTitle,detail:money(batch.amount),created,read:false};
       savePartnerNotice({...prev,unread:(prev.unread||0)+1,type,updated:created,items:[item,...(Array.isArray(prev.items)?prev.items:[])].slice(0,40)});
-      if(read(store.partnerAuth,null)){E.partnerAlert.dataset.noticeTarget="partner-payout";E.partnerAlert.innerHTML=`<div class="notice-row"><span class="notice-dot"></span><div><span class="kicker">${batch.status==="paid"?"Выплата выполнена":"Выплата направлена"}</span><strong>${money(batch.amount)}</strong><span>${esc(batch.venueTitle)} · нажмите, чтобы открыть баланс</span></div></div>`;E.partnerAlert.classList.add("show");clearTimeout(window.__partnerNoticeTimer);window.__partnerNoticeTimer=setTimeout(()=>E.partnerAlert.classList.remove("show"),9000);playPartnerClick()}
+      if(currentPartnerAccount()){E.partnerAlert.dataset.noticeTarget="partner-payout";E.partnerAlert.innerHTML=`<div class="notice-row"><span class="notice-dot"></span><div><span class="kicker">${batch.status==="paid"?"Выплата выполнена":"Выплата направлена"}</span><strong>${money(batch.amount)}</strong><span>${esc(batch.venueTitle)} · нажмите, чтобы открыть баланс</span></div></div>`;E.partnerAlert.classList.add("show");clearTimeout(window.__partnerNoticeTimer);window.__partnerNoticeTimer=setTimeout(()=>E.partnerAlert.classList.remove("show"),9000);playPartnerClick()}
     }
     function notifyPartnerModeration(item,status){
       const prev=partnerNotice(),created=new Date().toISOString(),type=status==="approved"?"moderation_approved":"moderation_rejected";
       const noticeItem={id:`PN-${Date.now().toString(36)}`,moderationId:item.id,type,room:item.targetTitle||"Карточка площадки",detail:moderationStatusLabel(status),created,read:false};
       savePartnerNotice({...prev,unread:(prev.unread||0)+1,type,updated:created,items:[noticeItem,...(Array.isArray(prev.items)?prev.items:[])].slice(0,40)});
-      if(read(store.partnerAuth,null)&&E.modalContent.querySelector(".partner-cabinet")){
+      if(currentPartnerAccount()&&E.modalContent.querySelector(".partner-cabinet")){
         E.partnerAlert.dataset.noticeTarget="partner-moderation";
         E.partnerAlert.innerHTML=`<div class="notice-row"><span class="notice-dot"></span><div><span class="kicker">Решение Rooms</span><strong>${esc(noticeItem.room)} · ${esc(noticeItem.detail)}</strong><span>Нажмите, чтобы открыть изменения карточки</span></div></div>`;
         E.partnerAlert.classList.add("show");clearTimeout(window.__partnerNoticeTimer);window.__partnerNoticeTimer=setTimeout(()=>E.partnerAlert.classList.remove("show"),9000);playPartnerClick();
@@ -2418,7 +2443,7 @@
     function notifyPartnerTariff(venueData,detail){
       const prev=partnerNotice(),created=new Date().toISOString(),item={id:`PN-${Date.now().toString(36)}`,type:"partner_mode",room:venueData.title||"Площадка",detail,created,read:false};
       savePartnerNotice({...prev,unread:(prev.unread||0)+1,type:"partner_mode",updated:created,items:[item,...(Array.isArray(prev.items)?prev.items:[])].slice(0,40)});
-      if(read(store.partnerAuth,null)){
+      if(currentPartnerAccount()){
         E.partnerAlert.dataset.noticeTarget="partner-tariff";
         E.partnerAlert.innerHTML=`<div class="notice-row"><span class="notice-dot"></span><div><span class="kicker">Тариф площадки изменён</span><strong>${esc(detail)}</strong><span>Нажмите, чтобы открыть тариф и начисления</span></div></div>`;
         E.partnerAlert.classList.add("show");clearTimeout(window.__partnerNoticeTimer);window.__partnerNoticeTimer=setTimeout(()=>E.partnerAlert.classList.remove("show"),9000);playPartnerClick();
@@ -2426,12 +2451,12 @@
     }
     function notifyPartnerVerification(venueData,status){
       const prev=partnerNotice(),created=new Date().toISOString(),detail=verificationStatusLabel(status),item={id:`PN-${Date.now().toString(36)}`,type:"verification",room:venueData.title||"Площадка",detail,created,read:false};savePartnerNotice({...prev,unread:(prev.unread||0)+1,type:"verification",updated:created,items:[item,...(Array.isArray(prev.items)?prev.items:[])].slice(0,40)});
-      if(read(store.partnerAuth,null)){E.partnerAlert.dataset.noticeTarget="partner-readiness";E.partnerAlert.innerHTML=`<div class="notice-row"><span class="notice-dot"></span><div><span class="kicker">Верификация площадки</span><strong>${esc(detail)}</strong><span>Нажмите, чтобы открыть готовность к публикации</span></div></div>`;E.partnerAlert.classList.add("show");clearTimeout(window.__partnerNoticeTimer);window.__partnerNoticeTimer=setTimeout(()=>E.partnerAlert.classList.remove("show"),9000);playPartnerClick()}
+      if(currentPartnerAccount()){E.partnerAlert.dataset.noticeTarget="partner-readiness";E.partnerAlert.innerHTML=`<div class="notice-row"><span class="notice-dot"></span><div><span class="kicker">Верификация площадки</span><strong>${esc(detail)}</strong><span>Нажмите, чтобы открыть готовность к публикации</span></div></div>`;E.partnerAlert.classList.add("show");clearTimeout(window.__partnerNoticeTimer);window.__partnerNoticeTimer=setTimeout(()=>E.partnerAlert.classList.remove("show"),9000);playPartnerClick()}
     }
     function notifyPartnerSubscriptionInvoice(invoice,event="created"){
       const prev=partnerNotice(),created=new Date().toISOString(),type=event==="paid"?"subscription_paid":event==="overdue"?"subscription_overdue":"subscription_due",title=event==="paid"?"Тариф оплачен":event==="overdue"?"Оплата тарифа просрочена":"Новое начисление по тарифу",detail=`${billingMonthLabel(invoice.month)} · ${money(invoice.total)}`,item={id:`PN-${Date.now().toString(36)}`,invoiceId:invoice.id,type,room:invoice.venueTitle,detail,created,read:false};
       savePartnerNotice({...prev,unread:(prev.unread||0)+1,type,updated:created,items:[item,...(Array.isArray(prev.items)?prev.items:[])].slice(0,40)});
-      if(read(store.partnerAuth,null)){
+      if(currentPartnerAccount()){
         E.partnerAlert.dataset.noticeTarget="partner-tariff";E.partnerAlert.innerHTML=`<div class="notice-row"><span class="notice-dot"></span><div><span class="kicker">${title}</span><strong>${esc(detail)}</strong><span>Нажмите, чтобы открыть начисления</span></div></div>`;
         E.partnerAlert.classList.add("show");clearTimeout(window.__partnerNoticeTimer);window.__partnerNoticeTimer=setTimeout(()=>E.partnerAlert.classList.remove("show"),9000);playPartnerClick();
       }
@@ -2450,7 +2475,7 @@
       if(!partnerRoomIds().some(id=>bookingContainsRoom(b,id)))return false;
       const prev=partnerNotice(),created=new Date().toISOString(),item={id:`PN-${Date.now().toString(36)}`,bookingId:b.id,type,detail,room:b.room,name:b.name,date:b.date,time:b.time,created,read:false};
       savePartnerNotice({...prev,unread:(prev.unread||0)+1,lastId:b.id,type,updated:created,items:[item,...(Array.isArray(prev.items)?prev.items:[])].slice(0,40)});
-      if(read(store.partnerAuth,null)){E.partnerAlert.dataset.noticeTarget="partner";E.partnerAlert.dataset.bookingId=b.id;E.partnerAlert.innerHTML=`<div class="notice-row"><span class="notice-dot"></span><div><span class="kicker">Напоминание партнёру</span><strong>${esc(partnerReminderTitle(type))}</strong><span>${esc(b.room)} · ${esc(detail||`${b.date} в ${b.time}`)} · нажмите, чтобы открыть</span></div></div>`;E.partnerAlert.classList.add("show");clearTimeout(window.__partnerNoticeTimer);window.__partnerNoticeTimer=setTimeout(()=>E.partnerAlert.classList.remove("show"),9000);playPartnerClick()}
+      if(currentPartnerAccount()){E.partnerAlert.dataset.noticeTarget="partner";E.partnerAlert.dataset.bookingId=b.id;E.partnerAlert.innerHTML=`<div class="notice-row"><span class="notice-dot"></span><div><span class="kicker">Напоминание партнёру</span><strong>${esc(partnerReminderTitle(type))}</strong><span>${esc(b.room)} · ${esc(detail||`${b.date} в ${b.time}`)} · нажмите, чтобы открыть</span></div></div>`;E.partnerAlert.classList.add("show");clearTimeout(window.__partnerNoticeTimer);window.__partnerNoticeTimer=setTimeout(()=>E.partnerAlert.classList.remove("show"),9000);playPartnerClick()}
       return true;
     }
     function scheduleBookingReminders(){
@@ -2475,14 +2500,14 @@
     function openPartnerBookings(){
       E.partnerAlert.classList.remove("show");
       markPartnerNoticesRead();
-      if(!read(store.partnerAuth,null)){renderPartnerLogin();return}
+      if(!currentPartnerAccount()){renderPartnerLogin();return}
       const noticed=latestPartnerNoticeBooking();
       partnerBookingFilter=noticed?partnerBookingGroup(noticed):"new";
       renderPartnerCabinet();
       requestAnimationFrame(()=>document.querySelector("[data-partner-bookings]")?.scrollIntoView({behavior:"smooth",block:"start"}));
     }
     function renderPartnerNotifications(){
-      if(!read(store.partnerAuth,null))return renderPartnerLogin();
+      if(!currentPartnerAccount())return renderPartnerLogin();
       const account=currentPartnerAccount();if(!account||account.mustChangePassword||account.status==="setup"||!account.venueId)return routePartnerAccount(account);
       if((partnerData().venue.cabinetStatus||"active")==="paused")return renderPartnerPaused();
       const items=partnerNoticeItems();
@@ -2504,17 +2529,17 @@
     }
     function openPartnerModeration(){
       E.partnerAlert.classList.remove("show");markPartnerNoticesRead();
-      if(!read(store.partnerAuth,null)){renderPartnerLogin();return}
+      if(!currentPartnerAccount()){renderPartnerLogin();return}
       renderPartnerCabinet();requestAnimationFrame(()=>document.querySelector("[data-partner-moderation]")?.scrollIntoView({behavior:"smooth",block:"center"}));
     }
     function openPartnerPayouts(){
-      E.partnerAlert.classList.remove("show");markPartnerNoticesRead();if(!read(store.partnerAuth,null))return renderPartnerLogin();renderPartnerCabinet();requestAnimationFrame(()=>document.querySelector("[data-partner-payouts]")?.scrollIntoView({behavior:"smooth",block:"center"}));
+      E.partnerAlert.classList.remove("show");markPartnerNoticesRead();if(!currentPartnerAccount())return renderPartnerLogin();renderPartnerCabinet();requestAnimationFrame(()=>document.querySelector("[data-partner-payouts]")?.scrollIntoView({behavior:"smooth",block:"center"}));
     }
     function openPartnerTariff(){
-      E.partnerAlert.classList.remove("show");markPartnerNoticesRead();if(!read(store.partnerAuth,null))return renderPartnerLogin();renderPartnerCabinet();requestAnimationFrame(()=>document.querySelector("[data-partner-tariff]")?.scrollIntoView({behavior:"smooth",block:"center"}));
+      E.partnerAlert.classList.remove("show");markPartnerNoticesRead();if(!currentPartnerAccount())return renderPartnerLogin();renderPartnerCabinet();requestAnimationFrame(()=>document.querySelector("[data-partner-tariff]")?.scrollIntoView({behavior:"smooth",block:"center"}));
     }
     function openPartnerReadiness(){
-      E.partnerAlert.classList.remove("show");markPartnerNoticesRead();if(!read(store.partnerAuth,null))return renderPartnerLogin();renderPartnerCabinet();requestAnimationFrame(()=>document.querySelector("[data-publication-readiness]")?.scrollIntoView({behavior:"smooth",block:"center"}));
+      E.partnerAlert.classList.remove("show");markPartnerNoticesRead();if(!currentPartnerAccount())return renderPartnerLogin();renderPartnerCabinet();requestAnimationFrame(()=>document.querySelector("[data-publication-readiness]")?.scrollIntoView({behavior:"smooth",block:"center"}));
     }
     function galleryWrap(node=E.modal){return node.querySelector("[data-gallery]")}
     function markGallery(wrap){
@@ -2808,15 +2833,15 @@
       </div>`,false,!keep);
       if(keep)requestAnimationFrame(()=>E.modalBox.scrollTop=top);
     }
-    function renderPartnerLogin(){openModal(`<span class="kicker">Вход для партнёров</span><h2 style="margin:0">Кабинет площадки</h2><p class="muted">Используйте email и пароль, которые выдал Rooms после проверки заявки.</p><form id="partnerLoginForm"><div class="form"><div class="field full"><label>Email</label><input name="login" type="email" autocomplete="username" placeholder="manager@venue.ru" required></div><div class="field full"><label>Пароль</label><input name="password" type="password" autocomplete="current-password" placeholder="Введите пароль" required></div></div><div class="chips" style="margin-top:14px"><button class="btn primary" type="submit">Войти</button><a class="btn" href="#partner" data-close-modal>Добавить заведение</a></div></form><div class="chat-guard">Демо-доступ: manager@kids-loft.ru · пароль rooms2026</div>`,true)}
-    function renderPartnerPasswordChange(account){openModal(`<span class="kicker">Первый вход</span><h2 style="margin:0">Создайте постоянный пароль</h2><p class="muted">Временный пароль больше не будет действовать после сохранения нового.</p><form id="partnerPasswordChange"><div class="form"><div class="field full"><label>Новый пароль</label><input name="password" type="password" minlength="8" autocomplete="new-password" placeholder="Минимум 8 символов" required></div><div class="field full"><label>Повторите пароль</label><input name="confirm" type="password" minlength="8" autocomplete="new-password" required></div></div><div class="chips" style="margin-top:14px"><button class="btn primary" type="submit">Сохранить пароль</button><button class="btn" data-partner-logout type="button">Выйти</button></div></form><p class="muted">Логин: ${esc(account.login)}</p>`,true)}
-    function renderPartnerSetupPending(account){const lead=adminLeads().find(x=>x.id===account.leadId);openModal(`<span class="kicker">Кабинет партнёра</span><h2 style="margin:0">Карточка площадки готовится</h2><p class="muted">Доступ создан для «${esc(account.venueTitle)}». Rooms проверяет данные и подготовит отдельную карточку площадки, после чего здесь появятся помещения и календарь.</p><div class="profile-block"><div class="profile-row"><span>Статус</span><strong>${leadStatusLabel(lead?.status||"approved")}</strong></div><div class="profile-row"><span>Город</span><strong>${esc(lead?.city||"уточняется")}</strong></div><div class="profile-row"><span>Помещений заявлено</span><strong>${Number(lead?.rooms)||1}</strong></div></div><div class="chips"><button class="btn" data-partner-logout type="button">Выйти</button><a class="btn soft" href="#partner" data-close-modal>Связаться с Rooms</a></div>`,true)}
+    function renderPartnerLogin(){openModal(`<span class="kicker">Вход для партнёров</span><h2 style="margin:0">Кабинет площадки</h2><p class="muted">Используйте email и пароль, которые выдал Rooms после проверки заявки.</p><form id="partnerLoginForm"><div class="form"><div class="field full"><label>Email</label><input name="login" type="email" autocomplete="username" placeholder="manager@venue.ru" required></div><div class="field full"><label>Пароль</label><input name="password" type="password" autocomplete="current-password" placeholder="Введите пароль" required></div></div><div class="chips" style="margin-top:14px"><button class="btn primary" type="submit">Войти</button><button class="btn" data-partner-site="partner" type="button">Добавить заведение</button></div></form><div class="chat-guard">Демо-доступ: ${demoPartnerAccess.login} · пароль ${demoPartnerAccess.password}</div>`,true)}
+    function renderPartnerPasswordChange(account){openPartnerWorkspace(`<section class="partner-editor" style="max-width:620px;margin:40px auto"><span class="kicker">Первый вход</span><h2 style="margin:8px 0">Создайте постоянный пароль</h2><p class="muted">Временный пароль больше не будет действовать после сохранения нового.</p><form id="partnerPasswordChange"><div class="form"><div class="field full"><label>Новый пароль</label><input name="password" type="password" minlength="8" autocomplete="new-password" placeholder="Минимум 8 символов" required></div><div class="field full"><label>Повторите пароль</label><input name="confirm" type="password" minlength="8" autocomplete="new-password" required></div></div><div class="chips" style="margin-top:14px"><button class="btn primary" type="submit">Сохранить пароль</button></div></form><p class="muted">Логин: ${esc(account.login)}</p></section>`)}
+    function renderPartnerSetupPending(account){const lead=adminLeads().find(x=>x.id===account.leadId);openPartnerWorkspace(`<section class="partner-editor" style="max-width:760px;margin:40px auto"><span class="kicker">Кабинет партнёра</span><h2 style="margin:8px 0">Карточка площадки готовится</h2><p class="muted">Доступ создан для «${esc(account.venueTitle)}». Rooms проверяет данные и подготовит отдельную карточку площадки, после чего здесь появятся помещения и календарь.</p><div class="profile-block"><div class="profile-row"><span>Статус</span><strong>${leadStatusLabel(lead?.status||"approved")}</strong></div><div class="profile-row"><span>Город</span><strong>${esc(lead?.city||"уточняется")}</strong></div><div class="profile-row"><span>Помещений заявлено</span><strong>${Number(lead?.rooms)||1}</strong></div></div><div class="chips"><button class="btn soft" data-partner-site="partner" type="button">Связаться с Rooms</button></div></section>`)}
     function routePartnerAccount(account=currentPartnerAccount()){
       if(!account)return renderPartnerLogin();if(account.status==="blocked")return toast("Доступ площадки приостановлен. Свяжитесь с Rooms.");if(account.mustChangePassword)return renderPartnerPasswordChange(account);if(account.status==="setup"||!account.venueId)return renderPartnerSetupPending(account);return renderPartnerCabinet();
     }
     function renderPartnerPaused(){
       const data=partnerData();
-      openModal(`<span class="kicker">Кабинет партнёра</span><h2 style="margin:0">Доступ временно приостановлен</h2><p class="muted">Площадка «${esc(data.venue.title)}» сохранена, но редактирование и работа с заявками временно недоступны. Свяжитесь с Rooms, чтобы уточнить статус кабинета.</p><div class="chips"><button class="btn" data-partner-logout type="button">Выйти</button><a class="btn soft" href="#partner" data-close-modal>Связаться с Rooms</a></div>`,true);
+      openPartnerWorkspace(`<section class="partner-editor" style="max-width:760px;margin:40px auto"><span class="kicker">Кабинет партнёра</span><h2 style="margin:8px 0">Доступ временно приостановлен</h2><p class="muted">Площадка «${esc(data.venue.title)}» сохранена, но редактирование и работа с заявками временно недоступны. Свяжитесь с Rooms, чтобы уточнить статус кабинета.</p><div class="chips"><button class="btn soft" data-partner-site="partner" type="button">Связаться с Rooms</button></div></section>`);
     }
     function renderPartnerCabinet(keep=false){
       const account=currentPartnerAccount();if(!account)return renderPartnerLogin();if(account.mustChangePassword)return renderPartnerPasswordChange(account);if(account.status==="setup"||!account.venueId)return renderPartnerSetupPending(account);
@@ -2836,7 +2861,7 @@
       const partnerModeration=moderationRequests().filter(x=>x.targetId===data.venue.id||ids.includes(x.targetId)).sort((a,b)=>new Date(b.updated||b.created)-new Date(a.updated||a.created)),pendingModeration=partnerModeration.filter(x=>x.status==="pending").length;
       const weekStart=state.partnerWeekStart||date,weekDates=Array.from({length:7},(_,i)=>shiftDate(weekStart,i));
       const weekCards=live?weekDates.map(d=>{const x=partnerDaySummary(live,d),bookedWidth=x.total?x.booked/x.total*100:0,manualWidth=x.total?x.manual/x.total*100:0,exception=data.venue.specialHours?.[d],exceptionLabel=exception?.mode==="closed"?"особый выходной · ":exception?.mode==="custom"?`${intervalText(exception.start,exception.end)} · `:"";return `<button class="week-day ${d===date?"active":""}" data-partner-day="${d}" type="button"><span>${weekdayLabel(d)}</span><strong>${shortDateLabel(d)}</strong><div class="week-bar"><i class="booked" style="width:${bookedWidth}%"></i><i class="manual" style="width:${manualWidth}%"></i></div><small>${exceptionLabel}${x.free} свободно · ${x.booked} заявки · ${x.manual} вручную</small></button>`}).join(""):"";
-      openModal(`<div class="partner-cabinet">
+      openPartnerWorkspace(`<div class="partner-cabinet">
         <div class="partner-title"><span class="kicker">Кабинет партнёра</span><h2>${esc(data.venue.title)}</h2><p class="muted">Здесь площадка редактирует информацию о заведении, помещениях внутри него и отмечает занятость. Занятые часы сразу пропадают из свободных окон для клиента.</p></div>
         <div class="dash-grid"><div class="dash-card"><span class="muted">Заявки</span><strong>${books.length}</strong></div><div class="dash-card"><span class="muted">Средний чек</span><strong>${money(partnerFinance.avg)}</strong></div><div class="dash-card"><span class="muted">Допуслуги</span><strong>${money(partnerFinance.extras)}</strong></div><div class="dash-card"><span class="muted">В каталоге</span><strong>${publishedIds.length}</strong></div></div>
         <div class="chips"><button class="btn soft" data-partner-notifications type="button">Уведомления${Number(partnerNotice().unread||0)?` · ${Number(partnerNotice().unread)}`:""}</button><button class="btn soft" data-export="partner" type="button">Экспорт моих заявок CSV</button>${pendingModeration?`<span class="status review">На проверке · ${pendingModeration}</span>`:""}<span class="muted">${publicationStatusLabel(data.venue.publicationStatus)} · ${cabinetStatusLabel(data.venue.cabinetStatus)} · ${esc(data.venue.type||"Тип площадки не указан")} · ${ids.length} помещений · занято вручную ${busyTotal} · занято заявками ${bookedTotal}</span></div>
@@ -2894,17 +2919,18 @@
           <div class="admin-list" style="margin-top:12px">${manualItems.length?manualItems.map(x=>`<article class="admin-item"><div class="admin-item-head"><div><h4>${intervalText(x.start,x.end)} · ${busyTypeLabel(x.type)}</h4><p class="muted" style="margin:0">${esc(x.comment||"Без комментария")}</p></div><button class="btn" data-busy-delete="${selected}|${date}|${x.id}" type="button">Удалить</button></div></article>`).join(""):`<div class="empty" style="display:block">Ручной занятости на эту дату пока нет.</div>`}</div>
         </div>
         <div class="partner-editor"><h3>История действий</h3>${renderActivity(8)}</div>
-        <div class="chips"><button class="btn" data-partner-logout type="button">Выйти из кабинета</button><a class="btn soft" href="#partner" data-close-modal>Форма для новых площадок</a></div>
-      </div>`,false,!keep);
+        <div class="chips"><button class="btn soft" data-partner-site type="button">Вернуться на сайт</button><button class="btn" data-partner-site="partner" type="button">Форма для новых площадок</button></div>
+      </div>`,!keep);
       const venueForm=$("partnerVenueEdit"),emailField=venueForm?.elements.email?.closest(".field");
       emailField?.insertAdjacentHTML("afterend",`<div class="field full"><label>Реквизиты для выплат</label><span class="muted">Доступны только партнёру, бухгалтеру и администратору Rooms.</span></div><div class="field"><label>Банк</label><input name="bankName" value="${esc(data.venue.bankName||"")}" placeholder="Например, СберБанк"></div><div class="field"><label>БИК</label><input name="bik" inputmode="numeric" maxlength="9" value="${esc(data.venue.bik||"")}" placeholder="9 цифр"></div><div class="field full"><label>Расчётный счёт</label><input name="settlementAccount" inputmode="numeric" maxlength="20" value="${esc(data.venue.settlementAccount||"")}" placeholder="20 цифр"></div>`);
       if(keep)requestAnimationFrame(()=>E.modalBox.scrollTop=top);
     }
     function partnerLogin(form){
-      const login=String(form.login.value||"").trim().toLowerCase(),account=partnerAccountByLogin(login);
-      if(!account||account.password!==form.password.value)return toast("Неверный email или пароль партнёра.");
+      localStorage.removeItem(store.partnerAuth);
+      const login=String(form.login.value||"").trim().toLowerCase(),password=String(form.password.value||""),account=partnerAccountByLogin(login);
+      if(!account||!account.password||account.password!==password)return toast("Неверный email или пароль партнёра.");
       if(account.status==="blocked")return toast("Доступ площадки приостановлен. Свяжитесь с Rooms.");
-      write(store.partnerAuth,{accountId:account.id,login:account.login});
+      write(store.partnerAuth,{accountId:account.id,login:account.login,verified:true,authenticatedAt:new Date().toISOString()});
       if(account.mustChangePassword){renderPartnerPasswordChange(account);toast("Замените временный пароль.");return}
       if(account.status==="setup"||!account.venueId){renderPartnerSetupPending(account);toast("Вы вошли. Карточка площадки ещё готовится.");return}
       if((partnerData().venue.cabinetStatus||"active")==="paused")return renderPartnerPaused();
@@ -2918,7 +2944,7 @@
       const account=currentPartnerAccount(),password=String(form.password.value||""),confirm=String(form.confirm.value||"");if(!account)return renderPartnerLogin();if(password.length<8)return toast("Новый пароль должен содержать минимум 8 символов.");if(password!==confirm)return toast("Пароли не совпадают.");if(password===account.password)return toast("Новый пароль должен отличаться от временного.");
       savePartnerAccounts(ensurePartnerAccounts().map(x=>x.id===account.id?{...x,password,mustChangePassword:false,passwordChangedAt:new Date().toISOString()}:x));logActivity("partner_password","Партнёр сменил временный пароль",account.venueTitle,"partner");routePartnerAccount(currentPartnerAccount());toast("Новый пароль сохранён.");
     }
-    function openPartner(){read(store.partnerAuth,null)?routePartnerAccount():renderPartnerLogin()}
+    function openPartner(){const account=currentPartnerAccount();if(account)return routePartnerAccount(account);if(location.hash===partnerRoute)history.replaceState(null,"",`${location.pathname}${location.search}`);renderPartnerLogin()}
     function savePartnerVenue(form){
       const data=partnerData(),fd=new FormData(form);
       const paymentMethods=fd.getAll("paymentMethods").filter(x=>paymentMethodOptions.some(option=>option.value===x));
@@ -3421,12 +3447,12 @@
     E.age.addEventListener("change",()=>{syncAdult();renderCatalog()});
     E.chips.addEventListener("change",()=>renderCatalog());
     E.cityButton.addEventListener("click",renderCityPicker);
-    E.noticeButton.addEventListener("click",()=>current()&&!isAdmin()&&!isAccountant()?renderUserNotifications():read(store.partnerAuth,null)?renderPartnerNotifications():partnerNotice().unread?openPartnerBookings():toast("Уведомлений пока нет."));
+    E.noticeButton.addEventListener("click",()=>current()&&!isAdmin()&&!isAccountant()?renderUserNotifications():currentPartnerAccount()?renderPartnerNotifications():partnerNotice().unread?openPartnerBookings():toast("Уведомлений пока нет."));
     E.accountButton.addEventListener("click",()=>current()?renderProfile():renderAuth());
     E.partnerEntry.addEventListener("click",openPartner);
     E.partnerAlert.addEventListener("click",handleNoticeClick);
-    E.modalClose.addEventListener("click",closeModal);
-    E.modal.addEventListener("click",e=>{if(e.target===E.modal)closeModal()});
+    E.modalClose.addEventListener("click",requestCloseModal);
+    E.modal.addEventListener("click",e=>{if(e.target===E.modal)requestCloseModal()});
     E.partnerForm.addEventListener("submit",e=>{e.preventDefault();const email=$("partnerEmail").value.trim().toLowerCase(),existingLead=read(store.partner,[]).find(x=>String(x.email||"").toLowerCase()===email&&x.status!=="rejected");if(partnerAccountByLogin(email)||existingLead)return toast("Заявка или кабинет с таким email уже существует.");const lead={id:`P-${Date.now().toString().slice(-6)}`,city:$("partnerCity").value,venue:$("partnerVenue").value,address:$("partnerAddress").value,name:$("partnerName").value,phone:$("partnerPhone").value,email,type:$("partnerType").value,rooms:Number($("partnerRooms").value)||1,comment:$("partnerComment").value,status:"new",created:new Date().toISOString()};write(store.partner,[lead,...read(store.partner,[])]);logActivity("partner_lead","Новая заявка партнёра",`${lead.venue} · ${lead.city} · ${lead.rooms} помещений`);E.partnerStatus.textContent="Заявка отправлена";toast("Заявка отправлена. После проверки Rooms выдаст временный пароль.");E.partnerForm.reset();$("partnerCity").value=state.city});
     document.addEventListener("submit",e=>{if(e.target.id==="bookingChatForm"){e.preventDefault();submitBookingChat(e.target)}});
     document.addEventListener("submit",e=>{if(e.target.matches("[data-booking-note-form]")){e.preventDefault();saveBookingNote(e.target)}if(e.target.matches("[data-review-reply-form]")){e.preventDefault();saveReviewReply(e.target)}if(e.target.id==="supportForm"){e.preventDefault();submitSupportCase(e.target)}if(e.target.id==="bookingForm"){e.preventDefault();submitBooking(e.target)}if(e.target.id==="proposalForm"){e.preventDefault();submitProposal(e.target)}if(e.target.id==="cancelBookingForm"){e.preventDefault();submitCancelBooking(e.target)}if(e.target.id==="paymentForm"){e.preventDefault();submitPayment(e.target)}if(e.target.id==="reviewForm"){e.preventDefault();submitReview(e.target)}if(e.target.id==="loginForm"){e.preventDefault();login(e.target)}if(e.target.id==="registerForm"){e.preventDefault();register(e.target)}if(e.target.id==="personalDataForm"){e.preventDefault();savePersonalData(e.target)}if(e.target.id==="partnerLoginForm"){e.preventDefault();partnerLogin(e.target)}if(e.target.id==="partnerPasswordChange"){e.preventDefault();changePartnerPassword(e.target)}if(e.target.id==="partnerVenueEdit"){e.preventDefault();savePartnerVenue(e.target)}if(e.target.id==="partnerSpecialHours"){e.preventDefault();savePartnerSpecialHours(e.target)}if(e.target.id==="partnerRoomCreate"){e.preventDefault();createPartnerRoom(e.target)}if(e.target.id==="partnerRoomEdit"){e.preventDefault();savePartnerRoom(e.target)}if(e.target.id==="partnerBusyCreate"){e.preventDefault();createPartnerManualBusy(e.target)}});
@@ -3498,13 +3524,16 @@
       if(e.target.closest("[data-partner-back]"))renderPartnerCabinet();
       const partnerNoticeItem=e.target.closest("[data-partner-notice]");if(partnerNoticeItem){openPartnerNoticeBooking(partnerNoticeItem.dataset.partnerNotice);return}
       const reminderBooking=e.target.closest("[data-reminder-booking]");if(reminderBooking){openPartnerNoticeBooking(reminderBooking.dataset.reminderBooking);return}
-      if(e.target.closest("[data-partner-login]"))renderPartnerLogin();
+      if(e.target.closest("[data-partner-login]")){openPartner();return}
+      const partnerSite=e.target.closest("[data-partner-site]");if(partnerSite){leavePartnerWorkspace(partnerSite.dataset.partnerSite||"");return}
       if(e.target.closest("[data-logout]")){localStorage.removeItem(store.session);hydrate();closeModal();toast("Вы вышли.")}
-      if(e.target.closest("[data-partner-logout]")){localStorage.removeItem(store.partnerAuth);updateNoticeBadge();closeModal();toast("Вы вышли из кабинета партнёра.")}
-      if(e.target.closest("[data-close-modal]"))closeModal();
+      if(e.target.closest("[data-partner-logout]")){localStorage.removeItem(store.partnerAuth);updateNoticeBadge();leavePartnerWorkspace();toast("Вы вышли из кабинета партнёра.");return}
+      if(e.target.closest("[data-close-modal]"))requestCloseModal();
     });
-    document.addEventListener("keydown",e=>{if(e.key==="Escape")closeModal();if(E.modal.classList.contains("open")&&(e.key==="ArrowLeft"||e.key==="ArrowRight")&&!e.target.matches("input,select,textarea")){const wrap=galleryWrap();if(wrap){e.preventDefault();moveGallery(wrap,e.key==="ArrowRight"?1:-1);return}}if((e.key==="Enter"||e.key===" ")&&e.target.matches("[data-open-venue]")){e.preventDefault();renderSpace(e.target.dataset.openVenue)}});
+    document.addEventListener("keydown",e=>{if(e.key==="Escape"&&!E.modal.classList.contains("workspace"))requestCloseModal();if(E.modal.classList.contains("open")&&(e.key==="ArrowLeft"||e.key==="ArrowRight")&&!e.target.matches("input,select,textarea")){const wrap=galleryWrap();if(wrap){e.preventDefault();moveGallery(wrap,e.key==="ArrowRight"?1:-1);return}}if((e.key==="Enter"||e.key===" ")&&e.target.matches("[data-open-venue]")){e.preventDefault();renderSpace(e.target.dataset.openVenue)}});
+    window.addEventListener("popstate",()=>{if(location.hash===partnerRoute)openPartner();else if(E.modal.classList.contains("workspace"))closeModal()});
     hydrate();
+    if(location.hash===partnerRoute)openPartner();
   </script>
 </body>
 </html>

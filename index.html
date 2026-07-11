@@ -275,6 +275,7 @@
     .modal-head{position:sticky;top:0;z-index:2;display:flex;justify-content:flex-end;padding:12px 12px 0;background:linear-gradient(180deg,var(--paper),rgba(255,254,251,.88))}
     .close{width:42px;height:42px;border:1px solid var(--line);border-radius:50%;background:#fff;font-weight:900;font-size:20px}
     .modal-content{display:grid;gap:18px;padding:8px 20px 22px}
+    .modal-content>*{min-width:0}
     .space-layout{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(340px,.85fr);gap:18px;align-items:start}
     .gallery-wrap{position:relative}
     .gallery-main{
@@ -522,15 +523,24 @@
     .week-bar i{display:block;height:100%}
     .week-bar .booked{background:#c9826f}
     .week-bar .manual{background:#e7b7a9}
-    .admin-dashboard{display:grid;gap:16px}
+    .admin-dashboard{display:grid;gap:16px;min-width:0;max-width:100%;overflow:hidden}
     .admin-title{max-width:860px}
     .admin-title h2{margin:4px 0 8px;font-size:34px;line-height:1.08;letter-spacing:0}
     .admin-grid{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(300px,.8fr);gap:14px;align-items:start}
+    .admin-grid>*{min-width:0}.admin-grid.analytics-split{grid-template-columns:repeat(2,minmax(0,1fr))}
     .admin-panel{
       border:1px solid rgba(234,222,216,.88);border-radius:18px;background:rgba(255,255,255,.94);
       box-shadow:0 10px 28px rgba(78,42,31,.055);padding:16px;
     }
     .admin-panel h3{margin:0 0 10px}
+    .analytics-toolbar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;margin:12px 0}
+    .analytics-toolbar .booking-filters{margin:0}
+    .analytics-custom{display:grid;grid-template-columns:1fr 1fr auto;gap:8px;align-items:end;margin-top:10px}
+    .analytics-delta{display:block;margin-top:5px;color:var(--muted);font-size:11px;font-weight:800}
+    .analytics-delta.up{color:#4f7f55}.analytics-delta.down{color:#9b6048}
+    .analytics-table{display:grid;gap:0;width:100%;min-width:0;max-width:100%;margin-top:8px;overflow-x:auto}
+    .analytics-row{display:grid;grid-template-columns:minmax(120px,1.4fr) repeat(4,minmax(58px,.65fr));gap:7px;align-items:center;padding:9px 0;border-top:1px solid var(--line);font-size:12px}
+    .analytics-row:first-child{border-top:0}.analytics-row strong{font-size:13px}.analytics-row span:not(:first-child){text-align:right}
     .admin-list{display:grid;gap:10px}
     .admin-item{border:1px solid var(--line);border-radius:16px;background:#fff;padding:12px}
     .admin-item-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
@@ -738,6 +748,8 @@
       .schedule-day{grid-template-columns:1fr 1fr}
       .schedule-day label{grid-column:1/-1}
       .service-row{grid-template-columns:minmax(0,1fr) auto}
+      .analytics-custom{grid-template-columns:1fr 1fr}.analytics-custom .btn{grid-column:1/-1}
+      .analytics-table{overflow-x:auto}.analytics-row{min-width:590px}
       .service-row input[name="serviceName"],.service-row input[name="serviceDesc"]{grid-column:1/-1}
       .section h2{font-size:27px}
       .photo img{height:220px}
@@ -973,7 +985,7 @@
       {room:"terrace-hall",name:"Екатерина",rating:5,date:"июнь 2026",text:"Светлый зал, красиво смотрится на фото. Для семейного банкета оказалось удобно по посадке и по общению с площадкой."}
     ];
     const E={cityButton:$("cityButton"),heroCityLabel:$("heroCityLabel"),noticeButton:$("noticeButton"),noticeBadge:$("noticeBadge"),accountButton:$("accountButton"),searchForm:$("searchForm"),searchCity:$("searchCity"),spaceType:$("spaceType"),date:$("date"),dateDisplay:$("dateDisplay"),time:$("time"),hours:$("hours"),guests:$("guests"),age:$("ageMode"),chips:$("chips"),advancedToggle:$("advancedToggle"),advancedRow:$("advancedRow"),results:$("results"),catalogMap:$("catalogMap"),empty:$("empty"),count:$("countText"),intro:$("resultIntro"),sort:$("sortMode"),showAll:$("showAll"),resetButton:$("resetButton"),scenarioGrid:$("scenarioGrid"),partnerForm:$("partnerForm"),partnerStatus:$("partnerStatus"),partnerEntry:$("partnerEntry"),modal:$("modal"),modalBox:$("modalBox"),modalContent:$("modalContent"),modalClose:$("modalClose"),toast:$("toast"),partnerAlert:$("partnerAlert")};
-    let state={city:"Воронеж",type:"any",date:today,time:"",hours:3,guests:8,age:"any",features:[]},last=[],lastGroups=[],catalogView="list",catalogMapVenueId="",profileBookingFilter="active",partnerBookingFilter="new",adminBookingFilter="new",partnerBookingDateFilter="all",partnerBookingEventFilter="all",adminBookingDateFilter="all",adminBookingEventFilter="all",detailServiceSelection={},detailRoomSelection={};
+    let state={city:"Воронеж",type:"any",date:today,time:"",hours:3,guests:8,age:"any",features:[]},last=[],lastGroups=[],catalogView="list",catalogMapVenueId="",profileBookingFilter="active",partnerBookingFilter="new",adminBookingFilter="new",partnerBookingDateFilter="all",partnerBookingEventFilter="all",adminBookingDateFilter="all",adminBookingEventFilter="all",adminStatsPeriod="month",adminStatsFrom=`${today.slice(0,8)}01`,adminStatsTo=today,detailServiceSelection={},detailRoomSelection={};
 
     function esc(s){return String(s??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]))}
     function read(k,f){try{return JSON.parse(localStorage.getItem(k))??f}catch{return f}}
@@ -1319,6 +1331,50 @@
       const totals=active.reduce((acc,b)=>{const f=bookingSettlement(b);acc.total+=f.total;acc.extras+=f.extras;acc.prepay+=f.prepay;acc.commission+=f.commission;acc.partnerAmount+=f.partnerAmount;if(f.hasServices)acc.withServices++;return acc},{total:0,extras:0,prepay:0,commission:0,partnerAmount:0,withServices:0});
       return {...totals,count:active.length,avg:active.length?Math.round(totals.total/active.length):0};
     }
+    function localDateKey(d){return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`}
+    function adminAnalyticsRange(){
+      const end=new Date(`${adminStatsPeriod==="custom"?adminStatsTo:today}T23:59:59.999`),start=new Date(end);
+      if(adminStatsPeriod==="custom")start.setTime(new Date(`${adminStatsFrom}T00:00:00`).getTime());
+      else if(adminStatsPeriod==="day")start.setHours(0,0,0,0);
+      else if(adminStatsPeriod==="week"){start.setHours(0,0,0,0);start.setDate(start.getDate()-6)}
+      else if(adminStatsPeriod==="month"){start.setHours(0,0,0,0);start.setDate(1)}
+      else if(adminStatsPeriod==="quarter"){start.setHours(0,0,0,0);start.setMonth(Math.floor(start.getMonth()/3)*3,1)}
+      else if(adminStatsPeriod==="half"){start.setHours(0,0,0,0);start.setMonth(start.getMonth()<6?0:6,1)}
+      else{start.setHours(0,0,0,0);start.setMonth(0,1)}
+      if(start>end){const safe=new Date(end);safe.setHours(0,0,0,0);start.setTime(safe.getTime())}
+      const duration=end-start,previousEnd=new Date(start.getTime()-1),previousStart=new Date(previousEnd.getTime()-duration);
+      return {start,end,previousStart,previousEnd,label:`${dateLabel(localDateKey(start))} — ${dateLabel(localDateKey(end))}`};
+    }
+    function bookingMetricTime(b){
+      const created=new Date(b.created||b.createdAt||"");if(Number.isFinite(created.getTime()))return created.getTime();
+      const fallback=new Date(`${b.date||today}T12:00:00`);return fallback.getTime();
+    }
+    function bookingsInRange(list,range){return list.filter(b=>{const time=bookingMetricTime(b);return time>=range.start.getTime()&&time<=range.end.getTime()})}
+    function analyticsStats(list=[]){
+      const confirmed=list.filter(b=>b.confirmedAt||["confirmed","awaiting_payment","paid","visited","completed"].includes(effectiveBookingStatus(b))),paid=list.filter(isPrepayPaid),cancelled=list.filter(b=>effectiveBookingStatus(b)==="cancelled"),expired=list.filter(b=>effectiveBookingStatus(b)==="expired");
+      const finance=paid.reduce((acc,b)=>{const f=bookingSettlement(b);acc.turnover+=f.total;acc.prepay+=f.prepay;acc.commission+=f.commission;acc.partnerAmount+=f.partnerAmount;return acc},{turnover:0,prepay:0,commission:0,partnerAmount:0});
+      return {requests:list.length,confirmed:confirmed.length,paid:paid.length,cancelled:cancelled.length,expired:expired.length,conversion:list.length?Math.round(paid.length/list.length*100):0,confirmRate:list.length?Math.round(confirmed.length/list.length*100):0,...finance};
+    }
+    function analyticsDelta(current,previous,inverse=false){
+      const diff=Number(current)-Number(previous),percent=previous?Math.round(Math.abs(diff)/Math.abs(previous)*100):current?100:0,better=inverse?diff<=0:diff>=0;
+      return `<span class="analytics-delta ${diff===0?"":better?"up":"down"}">${diff===0?"без изменений":`${diff>0?"↑":"↓"} ${percent}% к прошлому периоду`}</span>`;
+    }
+    function analyticsGroups(list,keyFn){
+      const map=new Map();list.forEach(b=>{const key=keyFn(b);if(!key?.id)return;const item=map.get(key.id)||{...key,items:[]};item.items.push(b);map.set(key.id,item)});
+      return [...map.values()].map(x=>({...x,stats:analyticsStats(x.items)})).sort((a,b)=>b.stats.turnover-a.stats.turnover||b.stats.requests-a.stats.requests);
+    }
+    function analyticsGroupRows(groups=[]){
+      return groups.map(x=>`<div class="analytics-row"><strong>${esc(x.name)}</strong><span>${x.stats.requests}</span><span>${x.stats.paid}</span><span>${x.stats.conversion}%</span><span>${money(x.stats.turnover)}</span></div>`).join("")||`<div class="empty" style="display:block">В этом периоде данных пока нет.</div>`;
+    }
+    function adminAnalyticsData(books=adminBookings()){
+      const range=adminAnalyticsRange(),current=bookingsInRange(books,range),previous=bookingsInRange(books,{start:range.previousStart,end:range.previousEnd}),stats=analyticsStats(current),previousStats=analyticsStats(previous);
+      const venueGroups=analyticsGroups(current,b=>{const room=rooms.find(r=>bookingContainsRoom(b,r.id)),v=room?venue(room):venues.find(x=>x.title===b.venue);return {id:v?.id||b.venue,name:v?.title||b.venue||"Площадка"}}),roomGroups=analyticsGroups(current,b=>({id:b.roomId||b.room,name:b.room||rooms.find(r=>r.id===b.roomId)?.title||"Помещение"}));
+      return {range,current,previous,stats,previousStats,venueGroups,roomGroups};
+    }
+    function adminAnalyticsPanel(books){
+      const data=adminAnalyticsData(books),s=data.stats,p=data.previousStats,periods=[["day","День"],["week","Неделя"],["month","Месяц"],["quarter","Квартал"],["half","Полугодие"],["year","Год"],["custom","Свой период"]];
+      return `<section class="admin-panel" data-admin-analytics><div class="admin-item-head"><div><h3>Статистика Rooms</h3><p class="muted" style="margin:0">Показатели считаются по дате создания заявки. Финансы — только по заявкам с внесённой предоплатой.</p></div><span class="status">${data.range.label}</span></div><div class="analytics-toolbar"><div class="booking-filters">${periods.map(([id,label])=>`<button class="booking-filter ${adminStatsPeriod===id?"active":""}" data-admin-stats-period="${id}" type="button">${label}</button>`).join("")}</div><button class="btn soft" data-export-stats type="button">Экспорт статистики CSV</button></div>${adminStatsPeriod==="custom"?`<div class="analytics-custom"><div class="field"><label>Начало периода</label><input data-admin-stats-from type="date" value="${adminStatsFrom}" max="${adminStatsTo}"></div><div class="field"><label>Конец периода</label><input data-admin-stats-to type="date" value="${adminStatsTo}" min="${adminStatsFrom}" max="${today}"></div><button class="btn primary" data-admin-stats-apply type="button">Применить</button></div>`:""}<div class="dash-grid" style="margin-top:14px"><div class="dash-card"><span class="muted">Заявки</span><strong>${s.requests}</strong>${analyticsDelta(s.requests,p.requests)}</div><div class="dash-card"><span class="muted">Подтверждения</span><strong>${s.confirmed}</strong>${analyticsDelta(s.confirmed,p.confirmed)}</div><div class="dash-card"><span class="muted">Оплаты</span><strong>${s.paid}</strong>${analyticsDelta(s.paid,p.paid)}</div><div class="dash-card"><span class="muted">Конверсия в оплату</span><strong>${s.conversion}%</strong>${analyticsDelta(s.conversion,p.conversion)}</div><div class="dash-card"><span class="muted">Оборот броней</span><strong>${money(s.turnover)}</strong>${analyticsDelta(s.turnover,p.turnover)}</div><div class="dash-card"><span class="muted">Комиссия Rooms</span><strong>${money(s.commission)}</strong>${analyticsDelta(s.commission,p.commission)}</div><div class="dash-card"><span class="muted">К выплате партнёрам</span><strong>${money(s.partnerAmount)}</strong>${analyticsDelta(s.partnerAmount,p.partnerAmount)}</div><div class="dash-card"><span class="muted">Отмены</span><strong>${s.cancelled}</strong>${analyticsDelta(s.cancelled,p.cancelled,true)}</div></div><div class="admin-grid analytics-split" style="margin-top:14px"><div><h3>По площадкам</h3><div class="analytics-table"><div class="analytics-row"><strong>Площадка</strong><span>Заявки</span><span>Оплаты</span><span>Конверсия</span><span>Оборот</span></div>${analyticsGroupRows(data.venueGroups)}</div></div><div><h3>По помещениям</h3><div class="analytics-table"><div class="analytics-row"><strong>Помещение</strong><span>Заявки</span><span>Оплаты</span><span>Конверсия</span><span>Оборот</span></div>${analyticsGroupRows(data.roomGroups)}</div></div></div></section>`;
+    }
     function bookingCountWord(n){
       const value=Math.abs(Number(n)||0)%100,last=value%10;
       if(value>10&&value<20)return "заявок";
@@ -1661,6 +1717,11 @@
       downloadCsv(`rooms-${scope}-bookings-${today}.csv`,[head,...rows]);
       logActivity("export",scope==="admin"?"Экспорт админки":"Экспорт партнёра",`${rows.length} строк`);
       toast("Выгрузка подготовлена в CSV, файл откроется в Excel.");
+    }
+    function exportAdminStats(){
+      const data=adminAnalyticsData(adminBookings()),head=["Уровень","Название","Период","Заявки","Подтверждения","Оплаты","Отмены","Конверсия в оплату","Оборот","Предоплаты","Комиссия Rooms","К выплате партнёрам"],row=(level,name,stats)=>[level,name,data.range.label,stats.requests,stats.confirmed,stats.paid,stats.cancelled,`${stats.conversion}%`,stats.turnover,stats.prepay,stats.commission,stats.partnerAmount];
+      const rows=[row("Итого","Rooms",data.stats),...data.venueGroups.map(x=>row("Площадка",x.name,x.stats)),...data.roomGroups.map(x=>row("Помещение",x.name,x.stats))];
+      downloadCsv(`rooms-admin-statistics-${localDateKey(data.range.start)}-${localDateKey(data.range.end)}.csv`,[head,...rows]);logActivity("export","Экспорт статистики Rooms",`${data.range.label} · ${data.stats.requests} заявок`);toast("Статистика подготовлена в CSV для Excel.");
     }
     function mapUrl(v){
       const text=encodeURIComponent(`${v.city}, ${v.address}, ${v.title}`);
@@ -2587,6 +2648,7 @@
         <div class="admin-title"><span class="kicker">Админка Rooms</span><h2>Операционный центр</h2><p class="muted">Служебный кабинет для заявок, партнёров, помещений и отзывов. Это v1 на локальных данных, но уже с рабочими статусами.</p></div>
         <div class="dash-grid"><div class="dash-card"><span class="muted">Новые заявки</span><strong>${pending}</strong></div><div class="dash-card"><span class="muted">Средний чек</span><strong>${money(adminFinance.avg)}</strong></div><div class="dash-card"><span class="muted">Допуслуги</span><strong>${money(adminFinance.extras)}</strong></div><div class="dash-card"><span class="muted">Заявки с допами</span><strong>${adminFinance.withServices}</strong></div></div>
         <div class="chips"><button class="btn soft" data-export="admin" type="button">Экспорт заявок CSV</button><span class="status ${moderationPending?"review":"paid"}">Изменения на проверке · ${moderationPending}</span><span class="status ${riskCount?"cancelled":"paid"}">Сигналы риска · ${riskCount}</span></div>
+        ${adminAnalyticsPanel(books)}
         <div class="admin-grid">
           <section class="admin-panel"><h3>Заявки на бронь</h3><div class="booking-filters">${adminFilters}</div>${adminQueue}<div class="admin-list">${bookingRows||`<div class="empty" style="display:block">${adminEmpty}</div>`}</div></section>
           <aside class="admin-panel"><h3>Изменения партнёра</h3><div class="admin-list">${moderationRows||`<div class="empty" style="display:block">Изменений на проверке пока нет.</div>`}</div><h3 style="margin-top:18px">Обращения в поддержку</h3>${renderSupportQueue("admin",5)}<h3 style="margin-top:18px">Площадки на подключение</h3><div class="admin-list">${leadRows}</div></aside>
@@ -3190,6 +3252,9 @@
       const dayBusy=e.target.closest("[data-day-busy]");if(dayBusy){setPartnerDayBusy(dayBusy.dataset.dayBusy);return}
       const busyDelete=e.target.closest("[data-busy-delete]");if(busyDelete){deletePartnerManualBusy(busyDelete.dataset.busyDelete);return}
       const photoDelete=e.target.closest("[data-photo-delete]");if(photoDelete){deletePartnerPhoto(photoDelete.dataset.photoDelete);return}
+      const statsPeriod=e.target.closest("[data-admin-stats-period]");if(statsPeriod){adminStatsPeriod=statsPeriod.dataset.adminStatsPeriod;renderAdminDashboard(true);return}
+      if(e.target.closest("[data-admin-stats-apply]")){const from=document.querySelector("[data-admin-stats-from]")?.value,to=document.querySelector("[data-admin-stats-to]")?.value;if(!from||!to||from>to)return toast("Проверьте начало и конец периода.");adminStatsFrom=from;adminStatsTo=to>today?today:to;renderAdminDashboard(true);return}
+      if(e.target.closest("[data-export-stats]")){exportAdminStats();return}
       const exportButton=e.target.closest("[data-export]");if(exportButton){exportBookings(exportButton.dataset.export);return}
       if(e.target.closest("[data-accountant-open]")){renderAccountantDashboard();return}
       if(e.target.closest("[data-admin-open]")){renderAdminDashboard();return}

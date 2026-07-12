@@ -172,7 +172,7 @@
     input:focus,select:focus,textarea:focus{border-color:var(--green-2);box-shadow:0 0 0 4px rgba(213,120,101,.16)}
     .advanced-row{display:none;margin-top:12px;padding-top:12px;border-top:1px solid var(--line)}
     .advanced-row.open{display:block}
-    .advanced-grid{display:grid;grid-template-columns:1fr 1.1fr;gap:12px}
+    .advanced-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
     .chips{display:flex;flex-wrap:wrap;gap:8px}
     .chip,.tag{
       display:inline-flex;align-items:center;gap:7px;border:1px solid var(--line);border-radius:999px;
@@ -888,14 +888,20 @@
                 <label for="ageMode">Состав гостей</label>
                 <select id="ageMode"><option value="any">Не важно</option><option value="family">Есть дети или семейное событие</option><option value="adult">Только взрослые 18+</option></select>
               </div>
+              <div class="field">
+                <label for="maxPrice">Цена до, руб./час</label>
+                <select id="maxPrice"><option value="0">Любая цена</option><option value="1500">1 500</option><option value="2000">2 000</option><option value="2500">2 500</option><option value="3000">3 000</option><option value="3500">3 500</option><option value="4000">4 000</option></select>
+              </div>
               <div class="field full">
                 <label>Удобства</label>
                 <div class="chips" id="chips">
                   <label class="chip"><input type="checkbox" value="kids">Детская зона</label>
                   <label class="chip"><input type="checkbox" value="karaoke">Караоке</label>
-                  <label class="chip" data-adult="true"><input type="checkbox" value="alcohol">Алкоголь</label>
+                  <label class="chip" data-adult="true"><input type="checkbox" value="alcohol">Можно со своим алкоголем</label>
                   <label class="chip"><input type="checkbox" value="parking">Парковка</label>
                   <label class="chip"><input type="checkbox" value="food">Можно со своей едой</label>
+                  <label class="chip"><input type="checkbox" value="projector">Проектор</label>
+                  <label class="chip"><input type="checkbox" value="kitchen">Кухня</label>
                   <label class="chip" data-adult="true"><input type="checkbox" value="hookah">Кальян</label>
                 </div>
               </div>
@@ -1009,9 +1015,9 @@
       {id:"kosmos",venue:"kids-loft",type:"kids",title:"Комната Космос",subtitle:"Детская комната",capacity:14,price:1600,min:2,rating:4.9,reviews:42,work:[10,24],features:["kids","parking","food"],tags:["аниматоры","торт","игровая зона"],desc:"Отдельная комната для детского праздника: сухой бассейн, место для чаепития и зона для родителей.",rules:"Можно со своим тортом. Алкоголь и кальян не подходят для этого формата.",promo:"При брони от 3 часов именинника ждёт подарок от площадки. Состав подарка уточняется после подтверждения.",images:[img("kids-loft"),img("banquet-hall"),img("lounge-room")],blocked:{[day(2)]:[[12,16],[20,24]],default:[[18,20]]}},
       {id:"safari",venue:"kids-loft",type:"kids",title:"Комната Сафари",subtitle:"Детская комната",capacity:10,price:1300,min:2,rating:4.8,reviews:31,work:[10,22],features:["kids","food"],tags:["до 10 гостей","мягкая зона","мастер-класс"],desc:"Небольшая тёплая комната для праздника младших детей и семейных встреч.",rules:"Подходит для детей до 8 лет, можно принести еду и украшения.",images:[img("kids-loft"),img("lounge-room"),img("banquet-hall")],blocked:{[day(1)]:[[13,15]],default:[[17,19]]}},
       {id:"voice-small",venue:"voice-room",type:"karaoke",title:"Караоке Small",subtitle:"Караоке-комната",capacity:8,price:2200,min:2,rating:4.7,reviews:64,work:[12,24],features:["karaoke","alcohol","parking","adult"],tags:["18+","звук","бар"],desc:"Отдельная комната для компании до 8 гостей: караоке, обслуживание и закрытый формат.",rules:"18+. Депозит и правила бара подтверждает площадка.",images:[img("karaoke-room"),img("lounge-room"),img("banquet-hall")],blocked:{[day(2)]:[[16,18],[21,24]],default:[[19,21]]}},
-      {id:"voice-vip",venue:"voice-room",type:"lounge",title:"VIP Lounge",subtitle:"Лаундж-комната",capacity:12,price:2600,min:2,rating:4.8,reviews:53,work:[12,24],features:["alcohol","hookah","karaoke","adult"],tags:["18+","кальян","караоке"],desc:"Приватная лаундж-комната для взрослой компании с мягкой зоной и караоке.",rules:"18+. Кальян и алкоголь доступны по правилам площадки.",images:[img("lounge-room"),img("karaoke-room"),img("banquet-hall")],blocked:{[day(2)]:[[14,17],[22,24]],default:[[18,20]]}},
-      {id:"terrace-hall",venue:"terrace-36",type:"banquet",title:"Большой зал",subtitle:"Банкетный зал",capacity:40,price:3400,min:3,rating:4.9,reviews:27,work:[10,24],features:["parking","food","alcohol"],tags:["до 40 гостей","сцена","кухня"],desc:"Светлый зал для дня рождения, выпускного или камерного банкета с отдельной посадкой.",rules:"Декор и меню согласуются с менеджером после подтверждения заявки.",images:[img("banquet-hall"),img("lounge-room"),img("kids-loft")],blocked:{[day(2)]:[[12,16],[20,24]],default:[[15,18]]}},
-      {id:"mybox-room",venue:"mybox-lounge",type:"lounge",title:"Мягкая комната",subtitle:"Лаундж",capacity:10,price:3000,min:2,rating:4.6,reviews:18,work:[11,24],features:["parking","alcohol","hookah","adult"],tags:["18+","мягкая зона","бар"],desc:"Демо-комната в Москве для проверки смены города.",rules:"18+. Детские события сюда не выводим.",images:[img("lounge-room"),img("karaoke-room"),img("banquet-hall")],blocked:{default:[[18,21]]}}
+      {id:"voice-vip",venue:"voice-room",type:"lounge",title:"VIP Lounge",subtitle:"Лаундж-комната",capacity:12,price:2600,min:2,rating:4.8,reviews:53,work:[12,24],features:["alcohol","hookah","karaoke","projector","adult"],tags:["18+","кальян","караоке"],desc:"Приватная лаундж-комната для взрослой компании с мягкой зоной и караоке.",rules:"18+. Кальян и алкоголь доступны по правилам площадки.",images:[img("lounge-room"),img("karaoke-room"),img("banquet-hall")],blocked:{[day(2)]:[[14,17],[22,24]],default:[[18,20]]}},
+      {id:"terrace-hall",venue:"terrace-36",type:"banquet",title:"Большой зал",subtitle:"Банкетный зал",capacity:40,price:3400,min:3,rating:4.9,reviews:27,work:[10,24],features:["parking","food","alcohol","projector","kitchen"],tags:["до 40 гостей","сцена","кухня"],desc:"Светлый зал для дня рождения, выпускного или камерного банкета с отдельной посадкой.",rules:"Декор и меню согласуются с менеджером после подтверждения заявки.",images:[img("banquet-hall"),img("lounge-room"),img("kids-loft")],blocked:{[day(2)]:[[12,16],[20,24]],default:[[15,18]]}},
+      {id:"mybox-room",venue:"mybox-lounge",type:"lounge",title:"Мягкая комната",subtitle:"Лаундж",capacity:10,price:3000,min:2,rating:4.6,reviews:18,work:[11,24],features:["parking","alcohol","hookah","projector","adult"],tags:["18+","мягкая зона","бар"],desc:"Демо-комната в Москве для проверки смены города.",rules:"18+. Детские события сюда не выводим.",images:[img("lounge-room"),img("karaoke-room"),img("banquet-hall")],blocked:{default:[[18,21]]}}
     ];
     const seedReviews=[
       {room:"kosmos",name:"Марина",rating:5,date:"июнь 2026",text:"Праздновали день рождения сына. Комната отдельная, родителям было где спокойно посидеть, а детям хватило места для игр."},
@@ -1020,8 +1026,8 @@
       {room:"voice-vip",name:"Ольга",rating:4,date:"май 2026",text:"Уютная мягкая зона и приватный формат. Хотелось бы чуть больше света возле стола, но в целом понравилось."},
       {room:"terrace-hall",name:"Екатерина",rating:5,date:"июнь 2026",text:"Светлый зал, красиво смотрится на фото. Для семейного банкета оказалось удобно по посадке и по общению с площадкой."}
     ];
-    const E={cityButton:$("cityButton"),heroCityLabel:$("heroCityLabel"),noticeButton:$("noticeButton"),noticeBadge:$("noticeBadge"),accountButton:$("accountButton"),searchForm:$("searchForm"),searchCity:$("searchCity"),spaceType:$("spaceType"),date:$("date"),dateDisplay:$("dateDisplay"),time:$("time"),hours:$("hours"),guests:$("guests"),age:$("ageMode"),chips:$("chips"),advancedToggle:$("advancedToggle"),advancedRow:$("advancedRow"),results:$("results"),catalogMap:$("catalogMap"),empty:$("empty"),count:$("countText"),intro:$("resultIntro"),sort:$("sortMode"),showAll:$("showAll"),resetButton:$("resetButton"),scenarioGrid:$("scenarioGrid"),partnerForm:$("partnerForm"),partnerStatus:$("partnerStatus"),partnerEntry:$("partnerEntry"),modal:$("modal"),modalBox:$("modalBox"),modalContent:$("modalContent"),modalClose:$("modalClose"),toast:$("toast"),partnerAlert:$("partnerAlert")};
-    let state={city:"Воронеж",type:"any",date:today,time:"",hours:3,guests:8,age:"any",features:[]},last=[],lastGroups=[],catalogView="list",catalogMapVenueId="",profileBookingFilter="active",partnerBookingFilter="new",adminBookingFilter="new",partnerBookingDateFilter="all",partnerBookingEventFilter="all",adminBookingDateFilter="all",adminBookingEventFilter="all",adminStatsPeriod="month",adminStatsFrom=`${today.slice(0,8)}01`,adminStatsTo=today,detailServiceSelection={},detailRoomSelection={};
+    const E={cityButton:$("cityButton"),heroCityLabel:$("heroCityLabel"),noticeButton:$("noticeButton"),noticeBadge:$("noticeBadge"),accountButton:$("accountButton"),searchForm:$("searchForm"),searchCity:$("searchCity"),spaceType:$("spaceType"),date:$("date"),dateDisplay:$("dateDisplay"),time:$("time"),hours:$("hours"),guests:$("guests"),age:$("ageMode"),maxPrice:$("maxPrice"),chips:$("chips"),advancedToggle:$("advancedToggle"),advancedRow:$("advancedRow"),results:$("results"),catalogMap:$("catalogMap"),empty:$("empty"),count:$("countText"),intro:$("resultIntro"),sort:$("sortMode"),showAll:$("showAll"),resetButton:$("resetButton"),scenarioGrid:$("scenarioGrid"),partnerForm:$("partnerForm"),partnerStatus:$("partnerStatus"),partnerEntry:$("partnerEntry"),modal:$("modal"),modalBox:$("modalBox"),modalContent:$("modalContent"),modalClose:$("modalClose"),toast:$("toast"),partnerAlert:$("partnerAlert")};
+    let state={city:"Воронеж",type:"any",date:today,time:"",hours:3,guests:8,age:"any",maxPrice:0,features:[]},last=[],lastGroups=[],catalogView="list",catalogMapVenueId="",profileBookingFilter="active",partnerBookingFilter="new",adminBookingFilter="new",partnerBookingDateFilter="all",partnerBookingEventFilter="all",adminBookingDateFilter="all",adminBookingEventFilter="all",adminStatsPeriod="month",adminStatsFrom=`${today.slice(0,8)}01`,adminStatsTo=today,detailServiceSelection={},detailRoomSelection={};
 
     function esc(s){return String(s??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]))}
     function read(k,f){try{return JSON.parse(localStorage.getItem(k))??f}catch{return f}}
@@ -1235,16 +1241,19 @@
       {value:"karaoke",label:"Караоке"},
       {value:"food",label:"Можно со своей едой"},
       {value:"parking",label:"Парковка"},
-      {value:"alcohol",label:"Алкоголь"},
+      {value:"alcohol",label:"Можно со своим алкоголем"},
       {value:"hookah",label:"Кальян"},
+      {value:"projector",label:"Проектор"},
+      {value:"kitchen",label:"Кухня"},
       {value:"adult",label:"18+"}
     ];
+    function featureLabel(value){return featureOptions.find(x=>x.value===value)?.label||value}
     function roomFeatureChips(selected=[]){
       const set=new Set(selected);
       return featureOptions.map(x=>`<label class="chip"><input name="features" type="checkbox" value="${x.value}" ${set.has(x.value)?"checked":""}>${x.label}</label>`).join("");
     }
     function featuresForType(type){
-      return type==="kids"?["kids","food"]:type==="karaoke"?["karaoke","alcohol","adult"]:type==="banquet"?["food","parking","alcohol"]:["parking","alcohol","adult"];
+      return type==="kids"?["kids","food"]:type==="karaoke"?["karaoke","alcohol","adult"]:type==="banquet"?["food","parking","alcohol","projector","kitchen"]:["parking","alcohol","projector","adult"];
     }
     function tagsForType(type){
       return type==="kids"?["детская зона","праздник","семейный формат"]:type==="karaoke"?["караоке","18+","закрытая комната"]:type==="banquet"?["банкет","гости","событие"]:["лаундж","VIP","приватно"];
@@ -2158,13 +2167,14 @@
       return `<div class="photo-manager"><div class="photo-manager-head"><div><h3 style="margin:0">${cover?"Фото заведения":"Фото помещения"}</h3><p class="photo-hint" style="margin:4px 0 0">${hint}</p></div><label class="btn soft upload-control">${cover?"Заменить фото":"Добавить фото"}<input data-photo-upload="${type}" ${roomId?`data-room-id="${roomId}"`:""} type="file" accept="image/*" ${cover?"":"multiple"}></label></div><div class="photo-grid">${safe.map((src,i)=>`<div class="photo-preview ${cover?"cover":""}"><img src="${esc(src)}" alt="${esc(target)} ${i+1}"><button class="photo-delete" data-photo-delete="${type}|${roomId}|${i}" type="button" aria-label="Удалить фото">×</button></div>`).join("")}</div></div>`;
     }
 
-    function filters(){return {city:E.searchCity.value,type:E.spaceType.value,date:E.date.value,time:E.time.value,hours:Number(E.hours.value),guests:Number(E.guests.value||1),age:E.age.value,features:[...E.chips.querySelectorAll("input:checked")].map(i=>i.value)}}
+    function filters(){return {city:E.searchCity.value,type:E.spaceType.value,date:E.date.value,time:E.time.value,hours:Number(E.hours.value),guests:Number(E.guests.value||1),age:E.age.value,maxPrice:Number(E.maxPrice.value)||0,features:[...E.chips.querySelectorAll("input:checked")].map(i=>i.value)}}
     function roomFits(r,f){
       const v=venue(r);
       if(!isRoomPublic(r))return false;
       if(v.city!==f.city)return false;
       if(f.type!=="any"&&r.type!==f.type)return false;
       if(r.capacity<f.guests)return false;
+      if(f.maxPrice&&r.price>f.maxPrice)return false;
       if(f.age==="adult"&&r.features.includes("kids"))return false;
       if(f.age==="family"&&r.features.includes("adult"))return false;
       if(f.features.some(x=>!r.features.includes(x)))return false;
@@ -2209,7 +2219,8 @@
       E.results.innerHTML=groups.map(venueCard).join("");
       E.empty.style.display=groups.length?"none":"block";
       E.count.textContent=groups.length?`${groups.length} ${groups.length===1?"площадка":"площадки"} · ${arr.length} ${arr.length===1?"помещение":"помещений"}`:"";
-      E.intro.textContent=seed?`Сценарий выбран. Показываем площадки в городе ${f.city}.`:f.time?`Показываем помещения, свободные ${dateLabel(f.date)} с ${f.time}.`:`Показываем помещения со свободными окнами ${dateLabel(f.date)}.`;
+      const filterNote=`${f.maxPrice?` Цена до ${money(f.maxPrice)} за час.`:""}${f.features.length?` Удобства: ${f.features.map(featureLabel).join(", ")}.`:""}`;
+      E.intro.textContent=(seed?`Сценарий выбран. Показываем площадки в городе ${f.city}.`:f.time?`Показываем помещения, свободные ${dateLabel(f.date)} с ${f.time}.`:`Показываем помещения со свободными окнами ${dateLabel(f.date)}.`)+filterNote;
       document.querySelector("#catalog h2").textContent=`Популярные помещения в ${f.city}`;
       renderCatalogView();
     }
@@ -2589,7 +2600,7 @@
             <button class="gallery-nav next" data-gallery-dir="1" type="button" aria-label="Следующее фото">›</button>
           </div>
           <div class="thumbs">${r.images.map((src,i)=>`<button class="thumb ${i===0?"active":""}" data-gallery-jump="${i}" type="button" aria-label="Фото ${i+1}"><img src="${esc(src)}" alt=""></button>`).join("")}</div>
-          <div class="detail-title" style="margin-top:16px"><span class="kicker">${esc(v.title)} · ${esc(v.city)}</span><h2>${esc(r.title)}</h2><p class="muted">${esc(r.desc)}</p><div class="meta">${r.tags.map(t=>`<span class="tag">${esc(t)}</span>`).join("")}</div></div>
+          <div class="detail-title" style="margin-top:16px"><span class="kicker">${esc(v.title)} · ${esc(v.city)}</span><h2>${esc(r.title)}</h2><p class="muted">${esc(r.desc)}</p><div class="meta">${r.tags.map(t=>`<span class="tag">${esc(t)}</span>`).join("")}</div><div class="meta" aria-label="Удобства помещения">${r.features.filter(x=>x!=="adult").map(x=>`<span class="tag soft">${esc(featureLabel(x))}</span>`).join("")}</div></div>
           <div class="detail-card"><h3>О помещении</h3><div class="row"><span class="muted">Тип</span><strong>${esc(r.subtitle)}</strong></div><div class="row"><span class="muted">Вместимость</span><strong>до ${r.capacity}</strong></div><div class="row"><span class="muted">Минимум</span><strong>${r.min} ч</strong></div>${preparationRow(r)}<div class="row"><span class="muted">Рейтинг</span><strong>${stats.rating} · ${stats.count}</strong></div><h3>Что важно знать</h3><p class="muted">${esc(r.rules)}</p></div>
           <div class="detail-card" style="margin-top:14px"><h3>На карте</h3><p class="muted">${esc(v.city)} · ${esc(v.address)}</p><div class="map-frame"><iframe loading="lazy" referrerpolicy="no-referrer-when-downgrade" src="${mapUrl(v)}" title="Карта ${esc(v.title)}"></iframe></div></div>
           ${renderReviews(r)}
@@ -3417,10 +3428,11 @@
       if(render)renderCatalog();
     }
     function reset(){
-      E.spaceType.value="any";E.date.value=today;E.time.value="";E.hours.value="3";E.guests.value="8";E.age.value="any";
+      E.spaceType.value="any";E.date.value=today;E.time.value="";E.hours.value="3";E.guests.value="8";E.age.value="any";E.maxPrice.value="0";
       E.chips.querySelectorAll("input").forEach(i=>i.checked=false);E.scenarioGrid.querySelectorAll(".scenario").forEach(b=>b.classList.remove("active"));
-      syncDateDisplay();syncAdult();renderCatalog();
+      syncDateDisplay();syncAdult();syncFilterSummary();renderCatalog();
     }
+    function syncFilterSummary(){const count=[...E.chips.querySelectorAll("input:checked")].length+(E.maxPrice.value!=="0"?1:0)+(E.age.value!=="any"?1:0);E.advancedToggle.textContent=count?`Фильтры · ${count}`:"Фильтры"}
     function syncAdult(){
       const adult=E.age.value==="adult";
       E.chips.querySelectorAll("[data-adult]").forEach(label=>{label.classList.toggle("disabled",!adult);if(!adult)label.querySelector("input").checked=false});
@@ -3434,8 +3446,8 @@
       applyVenueAdminState();
       scheduleBookingReminders();
       E.time.innerHTML=`<option value="" ${state.time?"":"selected"}>Любое время</option>`+times.map(t=>`<option value="${t}" ${t===state.time?"selected":""}>${t}</option>`).join("");
-      E.date.min=today;E.date.value=state.date||today;syncDateDisplay();E.searchCity.value=state.city;E.spaceType.value=state.type;E.hours.value=String(state.hours);E.guests.value=state.guests;E.age.value=state.age;
-      E.accountButton.textContent=current()?(isAdmin()?"Админка":isAccountant()?"Бухгалтерия":"Профиль"):"Войти";selectCity(state.city,false);syncAdult();renderCatalog();
+      E.date.min=today;E.date.value=state.date||today;syncDateDisplay();E.searchCity.value=state.city;E.spaceType.value=state.type;E.hours.value=String(state.hours);E.guests.value=state.guests;E.age.value=state.age;E.maxPrice.value=String(state.maxPrice||0);
+      E.accountButton.textContent=current()?(isAdmin()?"Админка":isAccountant()?"Бухгалтерия":"Профиль"):"Войти";selectCity(state.city,false);syncAdult();syncFilterSummary();renderCatalog();
       updateNoticeBadge();
     }
 
@@ -3446,8 +3458,9 @@
     E.searchCity.addEventListener("change",()=>selectCity(E.searchCity.value));
     E.date.addEventListener("change",syncDateDisplay);
     E.sort.addEventListener("change",()=>renderCatalog());
-    E.age.addEventListener("change",()=>{syncAdult();renderCatalog()});
-    E.chips.addEventListener("change",()=>renderCatalog());
+    E.age.addEventListener("change",()=>{syncAdult();syncFilterSummary();renderCatalog()});
+    E.maxPrice.addEventListener("change",()=>{syncFilterSummary();renderCatalog()});
+    E.chips.addEventListener("change",()=>{syncFilterSummary();renderCatalog()});
     E.cityButton.addEventListener("click",renderCityPicker);
     E.noticeButton.addEventListener("click",()=>current()&&!isAdmin()&&!isAccountant()?renderUserNotifications():currentPartnerAccount()?renderPartnerNotifications():partnerNotice().unread?openPartnerBookings():toast("Уведомлений пока нет."));
     E.accountButton.addEventListener("click",()=>current()?renderProfile():renderAuth());

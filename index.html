@@ -261,7 +261,17 @@
     .partner .panel{padding:18px;border:1px solid var(--line);border-radius:18px;background:#fff;box-shadow:var(--soft)}
     .form{display:grid;grid-template-columns:1fr 1fr;gap:12px}
     .full{grid-column:1/-1}
-    .footer{display:flex;justify-content:space-between;gap:16px;border-top:1px solid var(--line);padding:30px 0;color:var(--muted);font-size:13px}
+    .footer{display:grid;grid-template-columns:minmax(180px,.8fr) minmax(0,1.2fr) minmax(180px,.7fr);gap:28px;border-top:1px solid var(--line);padding:34px 0;color:var(--muted);font-size:13px}
+    .footer-brand{display:grid;align-content:start;gap:5px}.footer-brand strong{color:var(--ink);font-size:17px}.footer-brand span{line-height:1.45}
+    .footer-links{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-content:start;gap:4px 18px}
+    .footer-link,.legal-link{width:max-content;max-width:100%;border:0;background:none;padding:5px 0;color:var(--muted);font:inherit;text-align:left;text-decoration:none}
+    .footer-link:hover,.legal-link:hover{color:var(--green)}
+    .footer-contact{display:grid;align-content:start;justify-items:start;gap:6px}.footer-contact a{color:var(--ink);font-weight:750}
+    .agreement-stack{display:grid;gap:8px;margin:14px 0 0}.agreement-row{display:flex;align-items:flex-start;gap:9px;color:var(--muted);font-size:12px;line-height:1.5}.agreement-row input{width:18px;height:18px;min-height:18px;max-height:18px;flex:0 0 18px;margin-top:2px;accent-color:var(--green)}.agreement-row .legal-link{display:inline;padding:0;color:var(--green);font-weight:750;vertical-align:baseline}
+    .legal-page{display:grid;gap:18px}.legal-page-head{display:grid;gap:7px;padding-bottom:16px;border-bottom:1px solid var(--line)}.legal-page-head h2{margin:0;font-size:34px}.legal-page-head p{margin:0;line-height:1.55}
+    .legal-draft{border:1px solid #e8c7ba;border-radius:14px;background:#fff2ed;padding:12px 14px;color:#8e4d40;font-size:13px;line-height:1.5}
+    .legal-section{display:grid;gap:7px}.legal-section h3{margin:0;font-size:18px}.legal-section p,.legal-section li{margin:0;color:var(--muted);line-height:1.58}.legal-section ul{display:grid;gap:6px;margin:0;padding-left:20px}
+    .legal-contacts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.legal-contact{display:grid;gap:5px;border:1px solid var(--line);border-radius:14px;background:#fff;padding:14px}.legal-contact span{color:var(--muted);font-size:12px}.legal-contact strong{overflow-wrap:anywhere}
     .modal{
       position:fixed;inset:0;z-index:80;display:none;align-items:center;justify-content:center;
       background:rgba(12,20,17,.52);padding:18px;
@@ -741,8 +751,6 @@
     .payment-provider strong{font-size:14px}.payment-provider span{color:var(--muted);font-size:12px;text-align:right}
     .payment-card-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
     .payment-card-grid .full{grid-column:1/-1}
-    .payment-security{display:flex;gap:9px;align-items:flex-start;margin:13px 0;color:var(--muted);font-size:12px;line-height:1.45}
-    .payment-security input{flex:0 0 18px;width:18px;height:18px;min-height:18px;max-height:18px;margin:1px 0 0;padding:0;border-radius:5px}
     .receipt-head{display:flex;justify-content:space-between;gap:14px;align-items:flex-start;padding-bottom:14px;border-bottom:1px solid var(--line)}
     .receipt-head h2{margin:3px 0 0}.receipt-number{color:var(--muted);font-size:12px;text-align:right}
     .receipt-lines{display:grid;gap:0;margin-top:8px}.receipt-line{display:flex;justify-content:space-between;gap:18px;padding:11px 0;border-bottom:1px solid var(--line);font-size:13px}
@@ -823,6 +831,7 @@
       .card-actions .btn{min-height:42px}
       .queue-event select{width:100%;min-width:0}
       .payment-shell{grid-template-columns:1fr}.payment-card-grid{grid-template-columns:1fr 1fr}.payment-provider>*{min-width:0}
+      .footer{grid-template-columns:1fr;gap:20px}.footer-links,.legal-contacts{grid-template-columns:1fr}.footer-contact{padding-top:4px}
       .transaction-row{grid-template-columns:1fr}.transaction-actions{justify-content:space-between}
     }
   </style>
@@ -1008,8 +1017,16 @@
   </main>
 
   <footer class="wrap footer">
-    <span>Rooms · приватные помещения</span>
-    <span>Пилотный запуск: Воронеж</span>
+    <div class="footer-brand"><strong>Rooms</strong><span>Сервис поиска и бронирования приватных помещений.</span><span>Пилотный запуск: Воронеж</span></div>
+    <nav class="footer-links" aria-label="Информация о сервисе">
+      <button class="footer-link" data-info-page="about" type="button">О сервисе</button>
+      <button class="footer-link" data-info-page="contacts" type="button">Контакты</button>
+      <button class="footer-link" data-info-page="terms" type="button">Условия бронирования</button>
+      <button class="footer-link" data-info-page="privacy" type="button">Обработка данных</button>
+      <button class="footer-link" data-info-page="partner-terms" type="button">Условия для партнёров</button>
+      <button class="footer-link" data-partner-site="partner" type="button">Добавить площадку</button>
+    </nav>
+    <div class="footer-contact"><span>Поддержка Rooms</span><a href="mailto:support@rooms.ru">support@rooms.ru</a><span>Ежедневно, 09:00-21:00</span></div>
   </footer>
 
   <div class="modal" id="modal" aria-hidden="true">
@@ -1027,7 +1044,8 @@
     const cityCoordinates={"Воронеж":[51.6608,39.2003],"Москва":[55.7558,37.6173],"Санкт-Петербург":[59.9343,30.3351],"Краснодар":[45.0355,38.9753]};
     const slotStep=.5;
     const times=Array.from({length:40},(_,i)=>hourLabel(10+i*slotStep));
-    const store={accounts:"rooms_accounts_v30",session:"rooms_session_v30",bookings:"rooms_bookings_v30",favorites:"rooms_favorites_v30",reviews:"rooms_reviews_v30",partner:"rooms_partner_v30",partnerAuth:"rooms_partner_auth_v30",partnerData:"rooms_partner_data_v30",partnerAccounts:"rooms_partner_accounts_v30",venueAdmin:"rooms_venue_admin_v30",partnerNotice:"rooms_partner_notice_v30",userNotice:"rooms_user_notice_v30",adminNotice:"rooms_admin_notice_v30",cityPreference:"rooms_city_preference_v30",support:"rooms_support_v30",activity:"rooms_activity_v30",moderation:"rooms_moderation_v30",chat:"rooms_chat_v30",payouts:"rooms_payouts_v30",subscriptionBilling:"rooms_subscription_billing_v30",reminders:"rooms_reminders_v30",payments:"rooms_payments_v30"};
+    const store={accounts:"rooms_accounts_v30",session:"rooms_session_v30",bookings:"rooms_bookings_v30",favorites:"rooms_favorites_v30",reviews:"rooms_reviews_v30",partner:"rooms_partner_v30",partnerAuth:"rooms_partner_auth_v30",partnerData:"rooms_partner_data_v30",partnerAccounts:"rooms_partner_accounts_v30",venueAdmin:"rooms_venue_admin_v30",partnerNotice:"rooms_partner_notice_v30",userNotice:"rooms_user_notice_v30",adminNotice:"rooms_admin_notice_v30",cityPreference:"rooms_city_preference_v30",support:"rooms_support_v30",activity:"rooms_activity_v30",moderation:"rooms_moderation_v30",chat:"rooms_chat_v30",payouts:"rooms_payouts_v30",subscriptionBilling:"rooms_subscription_billing_v30",reminders:"rooms_reminders_v30",payments:"rooms_payments_v30",consents:"rooms_consents_v30"};
+    const legalVersion="draft-2026-07-13";
     const adminAccess={login:"admin@rooms.ru",password:"rooms2026"};
     const accountantAccess={login:"accountant@rooms.ru",password:"rooms2026"};
     const day=n=>{const d=new Date();d.setHours(12,0,0,0);d.setDate(d.getDate()+n);return d.toISOString().slice(0,10)};
@@ -1056,10 +1074,32 @@
     ];
     const E={cityButton:$("cityButton"),heroCityLabel:$("heroCityLabel"),noticeButton:$("noticeButton"),noticeBadge:$("noticeBadge"),accountButton:$("accountButton"),searchForm:$("searchForm"),searchCity:$("searchCity"),spaceType:$("spaceType"),date:$("date"),dateDisplay:$("dateDisplay"),time:$("time"),hours:$("hours"),guests:$("guests"),age:$("ageMode"),maxPrice:$("maxPrice"),chips:$("chips"),advancedToggle:$("advancedToggle"),advancedRow:$("advancedRow"),results:$("results"),catalogMap:$("catalogMap"),empty:$("empty"),count:$("countText"),intro:$("resultIntro"),sort:$("sortMode"),showAll:$("showAll"),resetButton:$("resetButton"),scenarioGrid:$("scenarioGrid"),partnerForm:$("partnerForm"),partnerStatus:$("partnerStatus"),partnerEntry:$("partnerEntry"),modal:$("modal"),modalBox:$("modalBox"),modalContent:$("modalContent"),modalClose:$("modalClose"),toast:$("toast"),partnerAlert:$("partnerAlert")};
     let state={city:"Воронеж",type:"any",date:today,time:"",hours:3,guests:8,age:"any",maxPrice:0,features:[]},last=[],lastGroups=[],catalogView="list",catalogMapVenueId="",profileBookingFilter="active",partnerBookingFilter="new",adminBookingFilter="new",partnerBookingDateFilter="all",partnerBookingEventFilter="all",adminBookingDateFilter="all",adminBookingEventFilter="all",adminManualBookingFilter="active",adminManualDateFilter="upcoming",adminStatsPeriod="month",adminStatsFrom=`${today.slice(0,8)}01`,adminStatsTo=today,detailServiceSelection={},detailRoomSelection={};
+    let legalReturn=null;
+    attachLegalControls(document);
 
     function esc(s){return String(s??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]))}
     function read(k,f){try{return JSON.parse(localStorage.getItem(k))??f}catch{return f}}
     function write(k,v){localStorage.setItem(k,JSON.stringify(v))}
+    function consentLog(){return read(store.consents,[])}
+    function recordConsent({subjectId="",phone="",email="",context="service",documents=[]}){
+      const item={id:`C-${Date.now().toString(36)}-${Math.random().toString(36).slice(2,6)}`,subjectId,phone:String(phone||""),email:String(email||"").trim().toLowerCase(),context,documents:[...new Set(documents)],version:legalVersion,acceptedAt:new Date().toISOString()};
+      write(store.consents,[item,...consentLog()].slice(0,300));
+      return item;
+    }
+    function consentAgreement(context){
+      const partner=context==="partner",termsId=`terms-${context}`,privacyId=`privacy-${context}`,terms=partner?"partner-terms":"terms",termsLabel=partner?"условия для партнёров":context==="payment"?"условия оплаты и бронирования":"условия бронирования";
+      return `<div class="agreement-stack" data-consent-control><div class="agreement-row"><input id="${termsId}" name="termsAgreement" type="checkbox" required><div><label for="${termsId}">Принимаю </label><button class="legal-link" data-info-page="${terms}" type="button">${termsLabel}</button>.</div></div><div class="agreement-row"><input id="${privacyId}" name="privacyAgreement" type="checkbox" required><div><label for="${privacyId}">Отдельно даю согласие на </label><button class="legal-link" data-info-page="privacy" type="button">обработку персональных данных</button>.</div></div></div>`;
+    }
+    function attachLegalControls(root=document){
+      [["registerForm","registration"],["bookingForm","booking"]].forEach(([formId,context])=>{
+        const form=root.querySelector?.(`#${formId}`);if(!form||form.querySelector("[data-consent-control]"))return;
+        const anchor=context==="booking"?form.querySelector(".booking-summary"):form.querySelector(".form");anchor?.insertAdjacentHTML("afterend",consentAgreement(context));
+      });
+      const partnerForm=root.querySelector?.("#partnerForm");if(partnerForm&&!partnerForm.querySelector("[data-consent-control]"))partnerForm.querySelector(".form")?.insertAdjacentHTML("afterend",consentAgreement("partner"));
+      const authCopy=root.querySelector?.(".auth-copy");
+      if(authCopy&&root.querySelector?.("#registerForm"))authCopy.textContent=`Согласие будет сохранено с версией документов ${legalVersion}.`;
+      else if(authCopy&&root.querySelector?.("#loginForm"))authCopy.textContent="Вход в существующий кабинет не создаёт новое согласие. Документы доступны внизу сайта.";
+    }
     function supportedCity(value){return cities.includes(String(value||""))?String(value):""}
     function preferredCity(){
       const saved=supportedCity(read(store.cityPreference,"")),acc=current(),accountCity=acc&&!isAdmin(acc)&&!isAccountant(acc)?supportedCity(acc.city):"";
@@ -1786,6 +1826,12 @@
       if(!items.length)return `<div class="empty" style="display:block">Действий пока нет. Здесь появятся изменения карточек, занятости, заявок и оплат.</div>`;
       return `<div class="activity-log">${items.map(x=>`<article class="activity-item"><strong>${esc(x.title)}</strong><span>${new Date(x.created).toLocaleString("ru-RU")} · ${esc(x.details||"без деталей")}</span></article>`).join("")}</div>`;
     }
+    function consentContextLabel(value){return ({registration:"Регистрация клиента",booking:"Заявка на бронь",payment:"Оплата предоплаты",partner_lead:"Заявка партнёра"})[value]||value}
+    function consentDocumentLabel(value){return ({terms:"Условия бронирования",privacy:"Обработка данных",payment:"Условия оплаты","partner-terms":"Условия для партнёров"})[value]||value}
+    function consentLedgerPanel(){
+      const list=consentLog(),unique=new Set(list.map(x=>x.subjectId||x.phone||x.email).filter(Boolean)).size,rows=list.slice(0,10).map(x=>`<article class="activity-item"><strong>${esc(consentContextLabel(x.context))} · ${esc(x.subjectId||"без идентификатора")}</strong><span>${new Date(x.acceptedAt).toLocaleString("ru-RU")} · ${esc(x.phone||x.email||"контакт не указан")} · ${esc((x.documents||[]).map(consentDocumentLabel).join(", "))} · ${esc(x.version||"без версии")}</span></article>`).join("");
+      return `<section class="admin-panel" data-consent-ledger><div class="admin-item-head"><div><h3>Журнал согласий</h3><p class="muted" style="margin:0">Версия документа, дата и действие, в котором пользователь подтвердил условия.</p></div><span class="status ${list.length?"paid":"review"}">${list.length} записей · ${unique} субъектов</span></div><div class="chips" style="margin:12px 0"><button class="btn soft" data-export-consents type="button" ${list.length?"":"disabled"}>Экспорт журнала CSV</button></div><div class="activity-log">${rows||`<div class="empty" style="display:block">Согласий пока нет. Новые записи появятся после регистрации, заявки, оплаты или подключения площадки.</div>`}</div></section>`;
+    }
     function supportCases(){return read(store.support,[])}
     function saveSupportCases(list){write(store.support,list.slice(0,100))}
     function supportStatusLabel(s){return ({open:"открыто",working:"в работе",closed:"закрыто"})[s||"open"]||"открыто"}
@@ -1937,6 +1983,11 @@
       const data=adminAnalyticsData(adminBookings()),head=["Уровень","Название","Период","Заявки","Подтверждения","Оплаты","Отмены","Конверсия в оплату","Оборот","Предоплаты","Комиссия Rooms","К выплате партнёрам"],row=(level,name,stats)=>[level,name,data.range.label,stats.requests,stats.confirmed,stats.paid,stats.cancelled,`${stats.conversion}%`,stats.turnover,stats.prepay,stats.commission,stats.partnerAmount];
       const rows=[row("Итого","Rooms",data.stats),...data.venueGroups.map(x=>row("Площадка",x.name,x.stats)),...data.roomGroups.map(x=>row("Помещение",x.name,x.stats))];
       downloadCsv(`rooms-admin-statistics-${localDateKey(data.range.start)}-${localDateKey(data.range.end)}.csv`,[head,...rows]);logActivity("export","Экспорт статистики Rooms",`${data.range.label} · ${data.stats.requests} заявок`);toast("Статистика подготовлена в CSV для Excel.");
+    }
+    function exportConsents(){
+      const list=consentLog(),head=["ID записи","ID пользователя или заявки","Контекст","Телефон","Email","Документы","Версия","Дата согласия"],rows=list.map(x=>[x.id,x.subjectId,consentContextLabel(x.context),x.phone,x.email,(x.documents||[]).map(consentDocumentLabel).join("; "),x.version,x.acceptedAt]);
+      if(!rows.length)return toast("Журнал согласий пока пуст.");
+      downloadCsv(`rooms-consents-${today}.csv`,[head,...rows]);logActivity("export","Экспорт журнала согласий",`${rows.length} записей`,"admin");toast("Журнал согласий подготовлен в CSV.");
     }
     function mapUrl(v){
       const text=encodeURIComponent(`${v.city}, ${v.address}, ${v.title}`);
@@ -2362,6 +2413,7 @@
       E.modal.classList.remove("workspace");
       E.modalBox.classList.toggle("small",small);
       E.modalContent.innerHTML=html;
+      attachLegalControls(E.modalContent);
       E.modal.classList.add("open");
       E.modal.setAttribute("aria-hidden","false");
       document.body.classList.add("lock");
@@ -2370,8 +2422,8 @@
     const partnerRoute="#partner-cabinet";
     function partnerWorkspaceHeader(){const account=currentPartnerAccount();return `<header class="partner-page-bar"><div class="partner-page-bar-inner"><div class="partner-page-brand"><span class="partner-page-brand-mark">R</span><div><strong>Rooms для партнёров</strong><span>${esc(account?.venueTitle||"Кабинет площадки")}</span></div></div><div class="partner-page-actions"><button class="btn soft" data-partner-site type="button">На сайт</button><button class="btn" data-partner-logout type="button">Выйти</button></div></div></header>`}
     function openPartnerWorkspace(html,reset=true){openModal(`${partnerWorkspaceHeader()}<main class="partner-page-main">${html}</main>`,false,reset);E.modal.classList.add("workspace");if(location.hash!==partnerRoute)history.pushState({roomsPartner:true},"",partnerRoute)}
-    function closeModal(){E.modal.classList.remove("open","workspace");E.modal.setAttribute("aria-hidden","true");document.body.classList.remove("lock")}
-    function requestCloseModal(){if(location.hash===partnerRoute&&currentPartnerAccount()&&!E.modal.classList.contains("workspace"))return renderPartnerCabinet();closeModal()}
+    function closeModal(){legalReturn=null;E.modal.classList.remove("open","workspace");E.modal.setAttribute("aria-hidden","true");document.body.classList.remove("lock")}
+    function requestCloseModal(){if(legalReturn)return restoreInfoPage();if(location.hash===partnerRoute&&currentPartnerAccount()&&!E.modal.classList.contains("workspace"))return renderPartnerCabinet();closeModal()}
     function leavePartnerWorkspace(section=""){closeModal();const hash=section?`#${section}`:"";history.pushState(null,"",`${location.pathname}${location.search}${hash}`);if(section)requestAnimationFrame(()=>document.getElementById(section)?.scrollIntoView({behavior:"smooth",block:"start"}))}
     function toast(msg){E.toast.textContent=msg;E.toast.classList.add("show");clearTimeout(window.__t);window.__t=setTimeout(()=>E.toast.classList.remove("show"),3200)}
     function playPartnerClick(){
@@ -2820,6 +2872,49 @@
     function renderCityPicker(){
       openModal(`<span class="kicker">Город поиска</span><h2 style="margin:0">Выберите город</h2><p class="muted">Rooms запомнит выбор. Для авторизованного клиента он также станет городом поиска в профиле.</p><div class="chips" style="margin:14px 0"><button class="btn primary" data-detect-city type="button">Определить автоматически</button><span class="muted" data-city-detect-status aria-live="polite">Браузер запросит доступ к геопозиции.</span></div><div class="room-list">${cities.map(c=>`<button class="room-option ${c===state.city?"active":""}" data-city-choice="${esc(c)}" type="button"><strong>${esc(c)}</strong><span class="muted">${c==="Воронеж"?"Пилотный каталог":"Демо-каталог"}</span></button>`).join("")}</div>`,true);
     }
+    function renderInfoPage(page,preserve=false){
+      legalReturn=preserve?{node:E.modalContent.cloneNode(true),small:E.modalBox.classList.contains("small"),scroll:E.modalBox.scrollTop}:null;
+      const pages={
+        about:{kicker:"Rooms",title:"О сервисе",intro:"Rooms помогает найти и забронировать отдельное помещение для события, а площадкам — поддерживать актуальную занятость.",sections:[
+          ["Что бронирует клиент","Конкретную комнату или зал: детскую комнату, лаундж, караоке-комнату, банкетный зал или другое приватное пространство с оплатой за время."],
+          ["Как проходит бронь","Клиент выбирает помещение и свободное окно, площадка подтверждает доступность, после чего вносится предоплата 30%. Остаток оплачивается на месте доступным способом."],
+          ["Почему актуально время","Календарь складывается из заявок Rooms, ручных броней площадки, технической занятости и времени на подготовку между событиями."],
+          ["Статус проекта","Сейчас работает frontend-прототип для проверки продукта в Воронеже. Реальные платежи, серверная база и внешние уведомления будут подключены перед коммерческим запуском."]
+        ]},
+        contacts:{kicker:"Связаться с Rooms",title:"Контакты",intro:"По вопросам бронирования, подключения площадки и работы сервиса используйте контакты ниже.",contacts:[["Поддержка клиентов","support@rooms.ru"],["Подключение площадок","partners@rooms.ru"],["Юридические вопросы","legal@rooms.ru"],["График поддержки","ежедневно, 09:00-21:00"]],sections:[
+          ["Оператор проекта","ИП Зелёный Игорь Алексеевич. Реквизиты оператора, юридический адрес и официальные каналы обращений будут добавлены после утверждения юридической модели Rooms."],
+          ["Пилотный город","Воронеж. Архитектура сервиса рассчитана на подключение площадок в других городах России."]
+        ]},
+        terms:{kicker:"Документы Rooms",title:"Условия бронирования",intro:"Основные правила клиентского сценария Rooms до утверждения полной публичной оферты.",draft:true,sections:[
+          ["1. Роль Rooms","Rooms предоставляет сервис поиска, передачи заявки, приёма предоплаты и сопровождения бронирования. Услугу на площадке оказывает выбранный партнёр."],
+          ["2. Подтверждение","Отправленная заявка ещё не гарантирует бронь. Время считается подтверждённым после согласия площадки и внесения клиентом предоплаты."],
+          ["3. Стоимость","До отправки заявки клиент видит стоимость времени и выбранных дополнительных услуг, размер предоплаты 30% и остаток к оплате на площадке."],
+          ["4. Контакты и чат","До предоплаты общение проходит в чате Rooms. После оплаты площадке открывается телефон клиента для согласования деталей события."],
+          ["5. Отмена и возврат","До предоплаты заявка отменяется без возврата средств. После оплаты условия возврата зависят от срока отмены и правил площадки; спорные случаи передаются на ручной разбор Rooms."],
+          ["6. Завершение и отзыв","После мероприятия клиент может подтвердить завершение и оставить отзыв. При отсутствии жалобы бронь автоматически завершается через 24 часа после окончания."]
+        ]},
+        privacy:{kicker:"Документы Rooms",title:"Обработка персональных данных",intro:"Какие данные нужны сервису и для чего они используются.",draft:true,sections:[
+          ["Какие данные собираются","Имя, телефон, email, город поиска, данные заявки и история действий в сервисе. Платёжные реквизиты карты Rooms не сохраняет."],
+          ["Для чего нужны данные","Для создания кабинета, передачи заявки площадке, уведомлений о статусе, оплаты, поддержки, чеков, предотвращения злоупотреблений и исполнения требований закона."],
+          ["Когда открывается телефон","Площадка получает номер клиента только после внесения предоплаты. До этого контакты в чате автоматически блокируются."],
+          ["Хранение согласий","Rooms фиксирует версию принятого документа, дату, контекст действия и идентификатор пользователя или заявки. В прототипе данные хранятся локально в браузере; в рабочей версии они будут храниться на защищённом сервере."],
+          ["Обращения по данным","Запрос на уточнение, ограничение или удаление данных можно направить на legal@rooms.ru. Порядок и сроки ответа будут закреплены в финальной политике."]
+        ]},
+        "partner-terms":{kicker:"Площадкам",title:"Условия для партнёров",intro:"Базовые правила подключения площадки и ведения календаря в Rooms.",draft:true,sections:[
+          ["Подключение","Партнёр оставляет заявку, проходит проверку Rooms и получает временный пароль. Публикация возможна после заполнения карточки, помещений, цен и фотографий."],
+          ["Актуальная занятость","Партнёр обязан своевременно вносить ручные брони и техническую занятость. Занятость применяется сразу, критичные изменения карточки проходят модерацию."],
+          ["Заявки и контакты","Партнёр подтверждает, отклоняет или предлагает другое время. Телефон клиента открывается только после предоплаты; до неё передача контактов в чате запрещена."],
+          ["Финансы","Rooms удерживает согласованную комиссию из предоплаты. Плановые выплаты партнёрам формируются после завершения мероприятия и проверки спорных ситуаций."],
+          ["Ответственность","Партнёр отвечает за достоверность карточки и качество услуги на площадке. Финальные права, санкции, возвраты и порядок выплат закрепляются отдельным договором."]
+        ]}
+      };
+      const data=pages[page]||pages.about,contacts=(data.contacts||[]).map(([label,value])=>`<div class="legal-contact"><span>${esc(label)}</span><strong>${value.includes("@")?`<a href="mailto:${esc(value)}">${esc(value)}</a>`:esc(value)}</strong></div>`).join(""),sections=(data.sections||[]).map(([title,text])=>`<section class="legal-section"><h3>${esc(title)}</h3><p>${esc(text)}</p></section>`).join("");
+      openModal(`<article class="legal-page"><header class="legal-page-head"><span class="kicker">${esc(data.kicker)}</span><h2>${esc(data.title)}</h2><p class="muted">${esc(data.intro)}</p></header>${data.draft?`<div class="legal-draft"><strong>Проект документа.</strong> Формулировки нужно проверить с юристом до приёма реальных оплат и публикации официальной оферты.</div>`:""}${contacts?`<div class="legal-contacts">${contacts}</div>`:""}${sections}<div class="chips"><button class="btn" ${legalReturn?"data-info-back":"data-close-modal"} type="button">${legalReturn?"Назад к форме":"Закрыть"}</button></div></article>`,true);
+    }
+    function restoreInfoPage(){
+      const saved=legalReturn;if(!saved)return closeModal();legalReturn=null;
+      E.modalContent.replaceChildren(...saved.node.childNodes);E.modalBox.classList.toggle("small",saved.small);attachLegalControls(E.modalContent);requestAnimationFrame(()=>E.modalBox.scrollTop=saved.scroll);
+    }
     function detectCurrentCity(button){
       const status=button?.parentElement?.querySelector("[data-city-detect-status]");
       if(!navigator.geolocation){if(status)status.textContent="Браузер не поддерживает определение города. Выберите его из списка.";return}
@@ -2999,6 +3094,7 @@
         ${adminReminderPanel(books)}
         ${adminManualBookingsPanel(partnerData())}
         ${paymentLedgerPanel("admin")}
+        ${consentLedgerPanel()}
         <div class="admin-grid">
           <section class="admin-panel" data-admin-bookings><h3>Заявки на бронь</h3><div class="booking-filters">${adminFilters}</div>${adminQueue}<div class="admin-list">${bookingRows||`<div class="empty" style="display:block">${adminEmpty}</div>`}</div></section>
           <aside class="admin-panel"><div data-admin-moderation><h3>Изменения партнёра</h3><div class="admin-list">${moderationRows||`<div class="empty" style="display:block">Изменений на проверке пока нет.</div>`}</div></div><div data-admin-support><h3 style="margin-top:18px">Обращения в поддержку</h3>${renderSupportQueue("admin",5)}</div><div data-admin-leads><h3 style="margin-top:18px">Площадки на подключение</h3><div class="admin-list">${leadRows}</div></div></aside>
@@ -3519,7 +3615,7 @@
       if(effectiveBookingStatus(item)==="expired")return expirePaymentBooking(id);
       if(effectiveBookingStatus(item)!=="awaiting_payment")return toast("Эта заявка пока не готова к оплате.");
       const f=bookingFinance(item),email=acc?.email||"",due=paymentDueMs(item);
-      openModal(`<div class="admin-title"><span class="kicker">Безопасная предоплата</span><h2>${esc(item.venue)} · ${esc(item.room)}</h2><p class="muted">${dateLabel(item.date)} в ${esc(item.time)} · ${item.hours} ч · ${item.guests} гостей${due?` · слот удерживается до ${new Date(due).toLocaleTimeString("ru-RU",{hour:"2-digit",minute:"2-digit"})}`:""}</p></div><div class="payment-shell"><form class="payment-card" id="paymentForm" data-booking="${item.id}"><div class="payment-provider"><strong>Оплата банковской картой</strong><span>Демо-эквайринг<br>для прототипа Rooms</span></div><div class="payment-card-grid"><div class="field full"><label>Номер карты</label><input name="cardNumber" inputmode="numeric" autocomplete="cc-number" placeholder="4242 4242 4242 4242" maxlength="23" required></div><div class="field"><label>Срок действия</label><input name="expiry" inputmode="numeric" autocomplete="cc-exp" placeholder="ММ/ГГ" maxlength="5" required></div><div class="field"><label>CVC</label><input name="cvc" inputmode="numeric" autocomplete="cc-csc" placeholder="123" maxlength="4" required></div><div class="field full"><label>Email для чека</label><input name="email" type="email" autocomplete="email" value="${esc(email)}" placeholder="mail@example.com" required></div></div><label class="payment-security"><input name="agreement" type="checkbox" required>Согласен с условиями оплаты и обработкой данных. Номер карты и CVC не сохраняются в Rooms.</label><button class="btn primary" style="width:100%" type="submit">Оплатить ${money(f.prepay)}</button><p class="muted" style="margin:12px 0 0;font-size:12px">Для проверки используйте тестовую карту 4242 4242 4242 4242, любой будущий срок и CVC. Реальный платёжный шлюз будет подключён через серверный адаптер.</p></form><aside class="receipt-card"><h3>К оплате</h3>${bookingFinanceHtml(item)}<div class="chat-guard" style="margin-top:14px">Сейчас списывается только предоплата ${money(f.prepay)}. Остаток ${money(f.remaining)} оплачивается на площадке способом «${esc(paymentMethodLabel(bookingPaymentMethod(item)))}».</div></aside></div>`,false,true);
+      openModal(`<div class="admin-title"><span class="kicker">Безопасная предоплата</span><h2>${esc(item.venue)} · ${esc(item.room)}</h2><p class="muted">${dateLabel(item.date)} в ${esc(item.time)} · ${item.hours} ч · ${item.guests} гостей${due?` · слот удерживается до ${new Date(due).toLocaleTimeString("ru-RU",{hour:"2-digit",minute:"2-digit"})}`:""}</p></div><div class="payment-shell"><form class="payment-card" id="paymentForm" data-booking="${item.id}"><div class="payment-provider"><strong>Оплата банковской картой</strong><span>Демо-эквайринг<br>для прототипа Rooms</span></div><div class="payment-card-grid"><div class="field full"><label>Номер карты</label><input name="cardNumber" inputmode="numeric" autocomplete="cc-number" placeholder="4242 4242 4242 4242" maxlength="23" required></div><div class="field"><label>Срок действия</label><input name="expiry" inputmode="numeric" autocomplete="cc-exp" placeholder="ММ/ГГ" maxlength="5" required></div><div class="field"><label>CVC</label><input name="cvc" inputmode="numeric" autocomplete="cc-csc" placeholder="123" maxlength="4" required></div><div class="field full"><label>Email для чека</label><input name="email" type="email" autocomplete="email" value="${esc(email)}" placeholder="mail@example.com" required></div></div>${consentAgreement("payment")}<p class="auth-copy">Номер карты и CVC не сохраняются в Rooms.</p><button class="btn primary" style="width:100%" type="submit">Оплатить ${money(f.prepay)}</button><p class="muted" style="margin:12px 0 0;font-size:12px">Для проверки используйте тестовую карту 4242 4242 4242 4242, любой будущий срок и CVC. Реальный платёжный шлюз будет подключён через серверный адаптер.</p></form><aside class="receipt-card"><h3>К оплате</h3>${bookingFinanceHtml(item)}<div class="chat-guard" style="margin-top:14px">Сейчас списывается только предоплата ${money(f.prepay)}. Остаток ${money(f.remaining)} оплачивается на площадке способом «${esc(paymentMethodLabel(bookingPaymentMethod(item)))}».</div></aside></div>`,false,true);
     }
     function expirePaymentBooking(id){
       let list=read(store.bookings,[]);list=list.map(b=>b.id===id?appendBookingHistory({...b,status:"expired"},"payment_expired","Время предоплаты истекло","Слот снова доступен для новых заявок.","system"):b);saveAdminBookings(list);hydrate();renderProfile();toast("15 минут на предоплату истекли. Слот снова доступен.");
@@ -3550,6 +3646,7 @@
       const tx={id:`TXN-${Date.now().toString(36).toUpperCase()}`,bookingId:booking.id,roomId:booking.roomId,venue:booking.venue,room:booking.room,name:booking.name,phone:booking.phone,email,amount,status:"paid",provider:provider.provider,providerPaymentId:provider.providerPaymentId,orderId:provider.orderId,maskedCard:`•••• ${provider.last4}`,createdAt:paidAt,paidAt,receipt:{number:`RCP-${Date.now().toString(36).toUpperCase()}`,status:"demo",seller:"Rooms · прототип сервиса бронирования",buyer:email,items:[{name:`Предоплата за бронирование ${booking.room}`,quantity:1,price:amount,amount}],amount,tax:"без НДС",createdAt:paidAt}};
       savePaymentTransactions([tx,...paymentTransactions()]);
       if(!completeBookingPayment(id,tx)){savePaymentTransactions(paymentTransactions().filter(x=>x.id!==tx.id));return toast("Не удалось связать операцию с заявкой.")}
+      recordConsent({subjectId:booking.id,phone:booking.phone,email,context:"payment",documents:["terms","privacy","payment"]});
       renderPaymentReceipt(`${tx.id}|profile`);toast("Предоплата внесена. Электронный чек сохранён в заявке.");
     }
     function renderPaymentReceipt(payload){
@@ -3557,7 +3654,12 @@
       const b=read(store.bookings,[]).find(x=>x.id===tx.bookingId)||adminBookings().find(x=>x.id===tx.bookingId),f=b?bookingFinance(b):{total:tx.amount,remaining:0},receipt=tx.receipt||{},refunded=tx.status==="refunded";
       openModal(`<div class="receipt-card"><div class="receipt-head"><div><span class="kicker">${refunded?"Возврат выполнен":"Оплата прошла"}</span><h2>Электронный чек</h2></div><div class="receipt-number">${esc(receipt.number||"чек формируется")}<br>${transactionDate(tx.paidAt||tx.createdAt)}</div></div><div class="receipt-lines"><div class="receipt-line"><span>Статус операции</span><strong>${transactionStatusLabel(tx.status)}</strong></div><div class="receipt-line"><span>Операция Rooms</span><strong>${esc(tx.id)}</strong></div><div class="receipt-line"><span>ID эквайринга</span><strong>${esc(tx.providerPaymentId||"—")}</strong></div><div class="receipt-line"><span>Бронирование</span><strong>${esc(tx.venue)} · ${esc(tx.room)}</strong></div><div class="receipt-line"><span>Позиция</span><strong>${esc(receipt.items?.[0]?.name||"Предоплата за бронирование")}</strong></div><div class="receipt-line"><span>Карта</span><strong>${esc(tx.maskedCard||"—")}</strong></div><div class="receipt-line receipt-total"><span>${refunded?"Сумма возврата":"Оплачено"}</span><strong>${money(tx.amount)}</strong></div>${b?`<div class="receipt-line"><span>Полная стоимость брони</span><strong>${money(f.total)}</strong></div><div class="receipt-line"><span>Остаток на площадке</span><strong>${money(f.remaining)} · ${esc(paymentMethodLabel(bookingPaymentMethod(b)))}</strong></div>`:""}<div class="receipt-line"><span>Чек направлен</span><strong>${esc(tx.email||receipt.buyer||"—")}</strong></div>${refunded?`<div class="receipt-line"><span>Возврат</span><strong>${esc(tx.refundId||"—")} · ${transactionDate(tx.refundedAt)}</strong></div>`:""}</div><div class="chat-guard" style="margin-top:14px">Это демонстрационные данные чека. При подключении онлайн-кассы здесь появятся фискальный признак и ссылка оператора фискальных данных.</div><div class="chips" style="margin-top:14px"><button class="btn primary" data-payment-back="${esc(area)}" type="button">Назад</button></div></div>`,true,true);
     }
-    function saveBooking(b){const list=read(store.bookings,[]),roomsText=b.extraRooms?.length?` · дополнительно: ${extraRoomsText(b.extraRooms)}`:"",item={...b,history:[historyEntry("created","Заявка создана",`${b.date} в ${b.time} · ${b.hours} ч · ${b.guests} гостей${roomsText}`,"client")]};write(store.bookings,[item,...list].slice(0,40));logActivity("booking_new","Клиент отправил заявку",`${item.venue} · ${item.room}${roomsText} · ${item.date} ${item.time}`,"client");pending=null;notifyPartnerBooking(item);toast("Заявка отправлена. Площадка подтвердит время.")}
+    function saveBooking(b){
+      const list=read(store.bookings,[]),roomsText=b.extraRooms?.length?` · дополнительно: ${extraRoomsText(b.extraRooms)}`:"",item={...b,history:[historyEntry("created","Заявка создана",`${b.date} в ${b.time} · ${b.hours} ч · ${b.guests} гостей${roomsText}`,"client")]},acc=current();
+      write(store.bookings,[item,...list].slice(0,40));
+      recordConsent({subjectId:item.id,phone:item.phone,email:acc?.email||"",context:"booking",documents:["terms","privacy"]});
+      logActivity("booking_new","Клиент отправил заявку",`${item.venue} · ${item.room}${roomsText} · ${item.date} ${item.time}`,"client");pending=null;notifyPartnerBooking(item);toast("Заявка отправлена. Площадка подтвердит время.");
+    }
     let pending=null;
     function submitBooking(form){
       const r=rooms.find(x=>x.id===form.dataset.room),v=venue(r),fd=new FormData(form),ph=phone(fd.get("phone"));
@@ -3610,7 +3712,7 @@
       const fd=new FormData(form),ph=phone(fd.get("phone"));
       if(findAccount(fd.get("email"))||findAccount(ph))return toast("Кабинет с такой почтой или телефоном уже есть.");
       const acc={id:`U-${Date.now()}`,name:fd.get("name"),email:fd.get("email"),phone:ph,city:fd.get("city"),password:fd.get("password")};
-      write(store.accounts,[...accounts(),acc]);write(store.session,{id:acc.id});selectCity(acc.city,false,false);renderProfile();hydrate();toast("Кабинет создан.");
+      write(store.accounts,[...accounts(),acc]);write(store.session,{id:acc.id});recordConsent({subjectId:acc.id,phone:acc.phone,email:acc.email,context:"registration",documents:["terms","privacy"]});selectCity(acc.city,false,false);renderProfile();hydrate();toast("Кабинет создан.");
     }
     function savePersonalData(form){
       const acc=current();if(!acc)return renderAuth();
@@ -3632,6 +3734,14 @@
         if(notices[oldKey]){notices[ph]=notices[oldKey];delete notices[oldKey];saveUserNotices(notices)}
       }
       selectCity(city,false,false);logActivity("profile_update","Клиент обновил личные данные",`${name} · ${city}`,"client");hydrate();renderProfile();toast("Личные данные сохранены.");
+    }
+    function submitPartnerLead(e){
+      e.preventDefault();
+      const email=$("partnerEmail").value.trim().toLowerCase(),existingLead=read(store.partner,[]).find(x=>String(x.email||"").toLowerCase()===email&&x.status!=="rejected");
+      if(partnerAccountByLogin(email)||existingLead)return toast("Заявка или кабинет с таким email уже существует.");
+      const lead={id:`P-${Date.now().toString().slice(-6)}`,city:$("partnerCity").value,venue:$("partnerVenue").value,address:$("partnerAddress").value,name:$("partnerName").value,phone:$("partnerPhone").value,email,type:$("partnerType").value,rooms:Number($("partnerRooms").value)||1,comment:$("partnerComment").value,status:"new",created:new Date().toISOString()};
+      write(store.partner,[lead,...read(store.partner,[])]);recordConsent({subjectId:lead.id,phone:lead.phone,email:lead.email,context:"partner_lead",documents:["partner-terms","privacy"]});
+      logActivity("partner_lead","Новая заявка партнёра",`${lead.venue} · ${lead.city} · ${lead.rooms} помещений`);E.partnerStatus.textContent="Заявка отправлена";toast("Заявка отправлена. После проверки Rooms выдаст временный пароль.");E.partnerForm.reset();$("partnerCity").value=state.city;
     }
     function selectCity(city,render=true,syncAccount=true){
       const next=supportedCity(city)||"Воронеж";state.city=next;write(store.cityPreference,next);
@@ -3681,11 +3791,13 @@
     E.partnerAlert.addEventListener("click",handleNoticeClick);
     E.modalClose.addEventListener("click",requestCloseModal);
     E.modal.addEventListener("click",e=>{if(e.target===E.modal)requestCloseModal()});
-    E.partnerForm.addEventListener("submit",e=>{e.preventDefault();const email=$("partnerEmail").value.trim().toLowerCase(),existingLead=read(store.partner,[]).find(x=>String(x.email||"").toLowerCase()===email&&x.status!=="rejected");if(partnerAccountByLogin(email)||existingLead)return toast("Заявка или кабинет с таким email уже существует.");const lead={id:`P-${Date.now().toString().slice(-6)}`,city:$("partnerCity").value,venue:$("partnerVenue").value,address:$("partnerAddress").value,name:$("partnerName").value,phone:$("partnerPhone").value,email,type:$("partnerType").value,rooms:Number($("partnerRooms").value)||1,comment:$("partnerComment").value,status:"new",created:new Date().toISOString()};write(store.partner,[lead,...read(store.partner,[])]);logActivity("partner_lead","Новая заявка партнёра",`${lead.venue} · ${lead.city} · ${lead.rooms} помещений`);E.partnerStatus.textContent="Заявка отправлена";toast("Заявка отправлена. После проверки Rooms выдаст временный пароль.");E.partnerForm.reset();$("partnerCity").value=state.city});
+    E.partnerForm.addEventListener("submit",submitPartnerLead);
     document.addEventListener("submit",e=>{if(e.target.id==="bookingChatForm"){e.preventDefault();submitBookingChat(e.target)}});
     document.addEventListener("submit",e=>{if(e.target.matches("[data-booking-note-form]")){e.preventDefault();saveBookingNote(e.target)}if(e.target.matches("[data-review-reply-form]")){e.preventDefault();saveReviewReply(e.target)}if(e.target.id==="supportForm"){e.preventDefault();submitSupportCase(e.target)}if(e.target.id==="bookingForm"){e.preventDefault();submitBooking(e.target)}if(e.target.id==="proposalForm"){e.preventDefault();submitProposal(e.target)}if(e.target.id==="cancelBookingForm"){e.preventDefault();submitCancelBooking(e.target)}if(e.target.id==="paymentForm"){e.preventDefault();submitPayment(e.target)}if(e.target.id==="reviewForm"){e.preventDefault();submitReview(e.target)}if(e.target.id==="loginForm"){e.preventDefault();login(e.target)}if(e.target.id==="registerForm"){e.preventDefault();register(e.target)}if(e.target.id==="personalDataForm"){e.preventDefault();savePersonalData(e.target)}if(e.target.id==="partnerLoginForm"){e.preventDefault();partnerLogin(e.target)}if(e.target.id==="partnerPasswordChange"){e.preventDefault();changePartnerPassword(e.target)}if(e.target.id==="partnerVenueEdit"){e.preventDefault();savePartnerVenue(e.target)}if(e.target.id==="partnerSpecialHours"){e.preventDefault();savePartnerSpecialHours(e.target)}if(e.target.id==="partnerRoomCreate"){e.preventDefault();createPartnerRoom(e.target)}if(e.target.id==="partnerRoomEdit"){e.preventDefault();savePartnerRoom(e.target)}if(e.target.id==="partnerBusyCreate"){e.preventDefault();createPartnerManualBusy(e.target)}if(e.target.id==="manualBookingEdit"){e.preventDefault();saveManualBookingEdit(e.target)}if(e.target.id==="manualBookingCancel"){e.preventDefault();cancelManualBooking(e.target)}});
     document.addEventListener("change",e=>{if(e.target.matches("[data-manual-edit-room],[data-manual-edit-date]")){syncManualEditSchedule(e.target.form);return}if(e.target.matches("[data-busy-type]")){const fields=e.target.form?.querySelector("[data-manual-booking-fields]"),manual=e.target.value==="manual";if(fields)fields.hidden=!manual;fields?.querySelectorAll("[data-manual-required]").forEach(input=>input.required=manual);return}if(e.target.matches("[data-special-mode]")){const fields=e.target.form?.querySelector("[data-special-fields]");if(fields)fields.hidden=e.target.value!=="custom";return}if(e.target.matches('[name^="work_"][name$="_enabled"]')){e.target.closest(".schedule-day")?.classList.toggle("off",!e.target.checked);return}if(e.target.matches("[data-proposal-date],[data-proposal-time],[data-proposal-hours]")){updateProposalForm(e.target.form);return}if(e.target.matches("[data-booking-date],[data-booking-time],[data-booking-hours],[data-booking-service],[data-booking-extra-room]")){updateBookingForm(e.target.form);return}if(e.target.matches("[data-detail-service]")){toggleDetailService(e.target);return}if(e.target.matches("[data-detail-extra-room]")){toggleDetailExtraRoom(e.target);return}if(e.target.matches("[data-detail-date]")){state.date=e.target.value;state.time="";E.date.value=state.date;syncDateDisplay();renderSpace(e.target.dataset.detailDate,true)}if(e.target.matches("[data-detail-hours]")){state.hours=Number(e.target.value);E.hours.value=String(state.hours);renderSpace(e.target.dataset.detailHours,true)}if(e.target.matches("[data-admin-booking-event]")){adminBookingEventFilter=e.target.value;renderAdminDashboard(true);return}if(e.target.matches("[data-partner-booking-event]")){partnerBookingEventFilter=e.target.value;renderPartnerCabinet(true);return}if(e.target.matches("[data-partner-busy-room]")){state.partnerRoom=e.target.value;renderPartnerCabinet(true)}if(e.target.matches("[data-partner-busy-date]")){state.partnerDate=e.target.value;state.partnerWeekStart=e.target.value;renderPartnerCabinet(true)}if(e.target.matches("[data-photo-upload]"))handlePhotoUpload(e.target)});
     document.addEventListener("click",e=>{
+      const infoBack=e.target.closest("[data-info-back]");if(infoBack){restoreInfoPage();return}
+      const infoPage=e.target.closest("[data-info-page]");if(infoPage){renderInfoPage(infoPage.dataset.infoPage,!!infoPage.closest("#modal"));return}
       const detectCity=e.target.closest("[data-detect-city]");if(detectCity){detectCurrentCity(detectCity);return}
       const city=e.target.closest("[data-city-choice]");if(city){selectCity(city.dataset.cityChoice);closeModal();toast(`Город поиска: ${city.dataset.cityChoice}`);return}
       const scenario=e.target.closest("[data-scenario]");if(scenario){E.scenarioGrid.querySelectorAll(".scenario").forEach(b=>b.classList.toggle("active",b===scenario));E.spaceType.value=scenario.dataset.scenario;renderCatalog(scenario.dataset.scenario);document.getElementById("catalog").scrollIntoView({behavior:"smooth"});return}
@@ -3710,6 +3822,7 @@
       const statsPeriod=e.target.closest("[data-admin-stats-period]");if(statsPeriod){adminStatsPeriod=statsPeriod.dataset.adminStatsPeriod;renderAdminDashboard(true);return}
       if(e.target.closest("[data-admin-stats-apply]")){const from=document.querySelector("[data-admin-stats-from]")?.value,to=document.querySelector("[data-admin-stats-to]")?.value;if(!from||!to||from>to)return toast("Проверьте начало и конец периода.");adminStatsFrom=from;adminStatsTo=to>today?today:to;renderAdminDashboard(true);return}
       if(e.target.closest("[data-export-stats]")){exportAdminStats();return}
+      if(e.target.closest("[data-export-consents]")){exportConsents();return}
       const exportButton=e.target.closest("[data-export]");if(exportButton){exportBookings(exportButton.dataset.export);return}
       if(e.target.closest("[data-accountant-open]")){renderAccountantDashboard();return}
       if(e.target.closest("[data-admin-notifications]")){renderAdminNotifications();return}

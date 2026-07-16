@@ -509,6 +509,219 @@ test("server prepayment finalizes the hold, is idempotent and reveals contacts t
   await paymentApp.close();
 });
 
+test("partner manual reservations share availability with Rooms bookings", async () => {
+  const partnerId = "50000000-0000-4000-8000-000000000021";
+  const partnerPassword = "rooms2026";
+  const authRepository = new MemoryAuthRepository([{
+    id: partnerId,
+    role: "partner",
+    name: "Менеджер календаря",
+    email: "calendar@kids-loft.ru",
+    phone: null,
+    city: "Воронеж",
+    passwordHash: await hashPassword(partnerPassword),
+    passwordResetRequired: false,
+    blockedAt: null,
+  }]);
+  const venue = demoVenues.find((item) => item.id === venueIds.kidsLoft)!;
+  const bookingRepository = new MemoryBookingRepository({ partners: [{ userId: partnerId, venue }] });
+  const calendarApp = buildApp({ logger: false, authRepository, bookingRepository });
+  await calendarApp.ready();
+  const future = new Date(Date.now() + 12 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const legal = { termsVersion: "test-1", privacyVersion: "test-1", acceptedAt: new Date().toISOString() };
+  const clientRegistration = await calendarApp.inject({
+    method: "POST",
+    url: "/v1/auth/client/register",
+    payload: {
+      name: "Клиент календаря",
+      email: "calendar-client@rooms.test",
+      phone: "+7 903 000-00-01",
+      city: "Воронеж",
+      password: "calendar-client-2026",
+      legal,
+    },
+  });
+  assert.equal(clientRegistration.statusCode, 201);
+  const clientToken = clientRegistration.json().accessToken as string;
+  const clientBooking = await calendarApp.inject({
+    method: "POST",
+    url: "/v1/bookings",
+    headers: { authorization: `Bearer ${clientToken}` },
+    payload: {
+      primaryRoomId: roomIds.kosmos,
+      roomIds: [roomIds.kosmos],
+      startsAt: `${future}T10:00:00+03:00`,
+      durationMinutes: 120,
+      guests: 7,
+      eventType: "kids",
+      onSitePaymentMethod: "card",
+      legal,
+    },
+  });
+  assert.equal(clientBooking.statusCode, 201);
+  const partnerLogin = await calendarApp.inject({
+    method: "POST",
+    url: "/v1/auth/login",
+    payload: { login: "calendar@kids-loft.ru", password: partnerPassword },
+  });
+  assert.equal(partnerLogin.statusCode, 200);
+  const partnerHeaders = { authorization: `Bearer ${partnerLogin.json().accessToken}` };
+  const catalogConflict = await calendarApp.inject({
+    method: "POST",
+    url: "/v1/partner/reservations",
+    headers: partnerHeaders,
+    payload: {
+      roomId: roomIds.kosmos,
+      type: "technical",
+      category: "service",
+      startsAt: `${future}T18:00:00+03:00`,
+      endsAt: `${future}T19:00:00+03:00`,
+      comment: "Нельзя закрыть уже занятый интервал",
+    },
+  });
+  assert.equal(catalogConflict.statusCode, 409);
+  assert.equal(catalogConflict.json().code, "SLOT_CONFLICT");
+  const manual = await calendarApp.inject({
+    method: "POST",
+    url: "/v1/partner/reservations",
+    headers: partnerHeaders,
+    payload: {
+      roomId: roomIds.kosmos,
+      type: "manual_booking",
+      startsAt: `${future}T10:00:00+03:00`,
+      endsAt: `${future}T12:00:00+03:00`,
+      clientName: "Мария",
+      clientPhone: "+7 903 111-22-33",
+      guests: 6,
+      amount: 5000,
+      source: "phone",
+      comment: "День рождения по звонку",
+    },
+  });
+  assert.equal(manual.statusCode, 201);
+  assert.equal(manual.json().status, "active");
+  assert.equal(manual.json().clientPhone, "+79031112233");
+  const reservationId = manual.json().id as string;
+  const typeChange = await calendarApp.inject({
+    method: "PATCH",
+    url: `/v1/partner/reservations/${reservationId}`,
+    headers: partnerHeaders,
+    payload: {
+      roomId: roomIds.kosmos,
+      type: "technical",
+      category: "private",
+      startsAt: `${future}T10:00:00+03:00`,
+      endsAt: `${future}T12:00:00+03:00`,
+      comment: "Тип ручной брони должен сохраниться",
+    },
+  });
+  assert.equal(typeChange.statusCode, 409);
+  assert.equal(typeChange.json().code, "RESERVATION_TYPE_IMMUTABLE");
+  const list = await calendarApp.inject({
+    method: "GET",
+    url: `/v1/partner/reservations?dateFrom=${future}&dateTo=${future}&includeCancelled=true`,
+    headers: partnerHeaders,
+  });
+  assert.equal(list.statusCode, 200);
+  assert.equal(list.json().length, 1);
+  const hiddenWindow = await calendarApp.inject({
+    method: "POST",
+    url: "/v1/availability/search",
+    payload: { roomIds: [roomIds.kosmos], date: future, durationMinutes: 120, preferredTime: "10:00", guests: 6 },
+  });
+  assert.equal(hiddenWindow.statusCode, 200);
+  assert.equal(hiddenWindow.json().windows.some((window: { exactMatch: boolean }) => window.exactMatch), false);
+  const confirmConflict = await calendarApp.inject({
+    method: "POST",
+    url: `/v1/partner/bookings/${clientBooking.json().id}/confirm`,
+    headers: partnerHeaders,
+  });
+  assert.equal(confirmConflict.statusCode, 409);
+  assert.equal(confirmConflict.json().code, "SLOT_CONFLICT");
+  const deleteManual = await calendarApp.inject({
+    method: "DELETE",
+    url: `/v1/partner/reservations/${reservationId}`,
+    headers: partnerHeaders,
+  });
+  assert.equal(deleteManual.statusCode, 409);
+  assert.equal(deleteManual.json().code, "RESERVATION_CANCEL_REQUIRED");
+  const cancelled = await calendarApp.inject({
+    method: "POST",
+    url: `/v1/partner/reservations/${reservationId}/cancel`,
+    headers: partnerHeaders,
+    payload: { reason: "Клиент отменил мероприятие" },
+  });
+  assert.equal(cancelled.statusCode, 200);
+  assert.equal(cancelled.json().status, "cancelled");
+  const confirmed = await calendarApp.inject({
+    method: "POST",
+    url: `/v1/partner/bookings/${clientBooking.json().id}/confirm`,
+    headers: partnerHeaders,
+  });
+  assert.equal(confirmed.statusCode, 200);
+  const restoreConflict = await calendarApp.inject({
+    method: "POST",
+    url: `/v1/partner/reservations/${reservationId}/restore`,
+    headers: partnerHeaders,
+  });
+  assert.equal(restoreConflict.statusCode, 409);
+  assert.equal(restoreConflict.json().code, "SLOT_CONFLICT");
+  const rejected = await calendarApp.inject({
+    method: "POST",
+    url: `/v1/partner/bookings/${clientBooking.json().id}/reject`,
+    headers: partnerHeaders,
+    payload: { reason: "Освобождаем интервал для ручной брони" },
+  });
+  assert.equal(rejected.statusCode, 200);
+  const restored = await calendarApp.inject({
+    method: "POST",
+    url: `/v1/partner/reservations/${reservationId}/restore`,
+    headers: partnerHeaders,
+  });
+  assert.equal(restored.statusCode, 200);
+  assert.equal(restored.json().status, "active");
+  const moved = await calendarApp.inject({
+    method: "PATCH",
+    url: `/v1/partner/reservations/${reservationId}`,
+    headers: partnerHeaders,
+    payload: {
+      roomId: roomIds.kosmos,
+      type: "manual_booking",
+      startsAt: `${future}T14:00:00+03:00`,
+      endsAt: `${future}T16:00:00+03:00`,
+      clientName: "Мария",
+      clientPhone: "+7 903 111-22-33",
+      guests: 6,
+      amount: 5500,
+      source: "whatsapp",
+      comment: "Перенесли по просьбе клиента",
+    },
+  });
+  assert.equal(moved.statusCode, 200);
+  assert.match(moved.json().startsAt, /T11:00:00\.000Z$/);
+  const technical = await calendarApp.inject({
+    method: "POST",
+    url: "/v1/partner/reservations",
+    headers: partnerHeaders,
+    payload: {
+      roomId: roomIds.kosmos,
+      type: "technical",
+      category: "service",
+      startsAt: `${future}T16:00:00+03:00`,
+      endsAt: `${future}T17:00:00+03:00`,
+      comment: "Уборка после праздника",
+    },
+  });
+  assert.equal(technical.statusCode, 201);
+  const deletedTechnical = await calendarApp.inject({
+    method: "DELETE",
+    url: `/v1/partner/reservations/${technical.json().id}`,
+    headers: partnerHeaders,
+  });
+  assert.equal(deletedTechnical.statusCode, 204);
+  await calendarApp.close();
+});
+
 test("city stats expose exact supply and bucket the public audience", async () => {
   const launching = await app.inject({ method: "GET", url: "/v1/cities/воронеж/stats" });
   assert.equal(launching.statusCode, 200);

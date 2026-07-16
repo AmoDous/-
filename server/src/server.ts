@@ -31,6 +31,7 @@ const app = buildApp({
   authRepository: storage.authRepository,
   bookingRepository: storage.bookingRepository,
   paymentRepository: storage.paymentRepository,
+  reservationRepository: storage.reservationRepository,
   authTokenSecret: authTokenSecret || "rooms-local-development-secret-change-me-2026",
   secureCookies,
   enableDemoPayments,

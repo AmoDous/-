@@ -7,6 +7,14 @@ import { AuthConflictError, AuthService, MemoryAuthRepository, normalizeRussianP
 import { MemoryBookingRepository, type BookingRepository, type BookingStatusGroup, type PartnerBookingStatusGroup } from "./bookings.js";
 import { MemoryCatalogRepository, type CatalogRepository } from "./catalog.js";
 import { MemoryPaymentRepository, type PaymentRepository } from "./payments.js";
+import {
+  MemoryPartnerReservationRepository,
+  type ManualReservationSource,
+  type PartnerReservationInput,
+  type PartnerReservationRepository,
+  type PartnerReservationType,
+  type TechnicalCategory,
+} from "./reservations.js";
 import { availabilityForRoom, intersectAvailability, isIsoDate, MOSCOW_TIMEZONE, moscowToday } from "./availability.js";
 import type {
   AvailabilityWindow,
@@ -26,6 +34,7 @@ interface AppConfig {
   authRepository: AuthRepository;
   bookingRepository: BookingRepository;
   paymentRepository: PaymentRepository;
+  reservationRepository: PartnerReservationRepository;
   authTokenSecret: string;
   secureCookies: boolean;
   enableDemoPayments: boolean;
@@ -128,6 +137,35 @@ interface PartnerBookingRejectBody {
   reason: string;
 }
 
+interface PartnerReservationBody {
+  roomId: string;
+  type: PartnerReservationType;
+  category?: TechnicalCategory;
+  startsAt: string;
+  endsAt: string;
+  clientName?: string | null;
+  clientPhone?: string | null;
+  guests?: number | null;
+  amount?: number;
+  source?: ManualReservationSource | null;
+  comment?: string;
+}
+
+interface PartnerReservationQuery {
+  roomId?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  includeCancelled?: boolean;
+}
+
+interface ReservationParams {
+  reservationId: string;
+}
+
+interface ReservationCancelBody {
+  reason: string;
+}
+
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const assetContentTypes: Readonly<Record<string, string>> = {
   jpg: "image/jpeg",
@@ -136,6 +174,30 @@ const assetContentTypes: Readonly<Record<string, string>> = {
   webp: "image/webp",
   svg: "image/svg+xml",
 };
+const partnerReservationBodySchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["roomId", "type", "startsAt", "endsAt"],
+  properties: {
+    roomId: { type: "string", minLength: 36, maxLength: 36 },
+    type: { type: "string", enum: ["manual_booking", "technical"] },
+    category: { type: "string", enum: ["technical", "service", "private"] },
+    startsAt: { type: "string", minLength: 20, maxLength: 40 },
+    endsAt: { type: "string", minLength: 20, maxLength: 40 },
+    clientName: { type: ["string", "null"], maxLength: 100 },
+    clientPhone: { type: ["string", "null"], maxLength: 30 },
+    guests: { type: ["integer", "null"], minimum: 1, maximum: 1000 },
+    amount: { type: "number", minimum: 0, maximum: 100_000_000 },
+    source: { type: ["string", "null"], enum: ["phone", "whatsapp", "telegram", "walk_in", "other", null] },
+    comment: { type: "string", maxLength: 2000 },
+  },
+} as const;
+const reservationParamsSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["reservationId"],
+  properties: { reservationId: { type: "string", minLength: 36, maxLength: 36 } },
+} as const;
 
 class ApiError extends Error {
   constructor(
@@ -219,6 +281,13 @@ function moneyAmount(value: number): number {
   return Math.round(value * 100) / 100;
 }
 
+function relativeMoscowHour(value: Date, baseDate: string): number {
+  const local = moscowDateTime(value);
+  const dayOffset = Math.round((Date.parse(`${local.date}T00:00:00Z`) - Date.parse(`${baseDate}T00:00:00Z`)) / 86_400_000);
+  const [hours, minutes] = local.time.split(":").map(Number);
+  return dayOffset * 24 + (hours ?? 0) + (minutes ?? 0) / 60;
+}
+
 function photoUrl(baseUrl: string, path: string): string {
   const base = baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`;
   return new URL(path.replace(/^\//, ""), base).toString();
@@ -283,18 +352,23 @@ function errorPayload(code: string, message: string, details: unknown[] = []) {
 }
 
 export function buildApp(overrides: Partial<AppConfig> = {}): FastifyInstance {
+  const repository = overrides.repository ?? new MemoryCatalogRepository();
   const bookingRepository = overrides.bookingRepository ?? new MemoryBookingRepository();
   const paymentRepository = overrides.paymentRepository
     ?? (bookingRepository instanceof MemoryBookingRepository ? new MemoryPaymentRepository(bookingRepository) : null);
   if (!paymentRepository) throw new Error("paymentRepository is required with a non-memory booking repository.");
+  const reservationRepository = overrides.reservationRepository
+    ?? (bookingRepository instanceof MemoryBookingRepository ? new MemoryPartnerReservationRepository(bookingRepository, repository) : null);
+  if (!reservationRepository) throw new Error("reservationRepository is required with a non-memory booking repository.");
   const config: AppConfig = {
     publicSiteUrl: overrides.publicSiteUrl ?? "https://amodous.github.io/Rooms-bron",
     corsOrigins: overrides.corsOrigins ?? ["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:4173", "http://127.0.0.1:4173", "https://amodous.github.io"],
     logger: overrides.logger ?? false,
-    repository: overrides.repository ?? new MemoryCatalogRepository(),
+    repository,
     authRepository: overrides.authRepository ?? new MemoryAuthRepository(),
     bookingRepository,
     paymentRepository,
+    reservationRepository,
     authTokenSecret: overrides.authTokenSecret ?? "rooms-local-development-secret-change-me-2026",
     secureCookies: overrides.secureCookies ?? false,
     enableDemoPayments: overrides.enableDemoPayments ?? true,
@@ -303,9 +377,60 @@ export function buildApp(overrides: Partial<AppConfig> = {}): FastifyInstance {
   const auth = new AuthService(config.authRepository, config.authTokenSecret);
   const authAttempts = new AuthAttemptLimiter();
 
+  const withReservationBlocks = async (rooms: Room[], date: string): Promise<Room[]> => {
+    if (config.repository.storage !== "memory" || !rooms.length) return rooms;
+    const blocks = await config.reservationRepository.blocksByDate(rooms.map((room) => room.id), date);
+    return rooms.map((room) => ({
+      ...room,
+      blockedByDate: { ...room.blockedByDate, [date]: [...(room.blockedByDate[date] ?? []), ...(blocks[room.id] ?? [])] },
+    }));
+  };
+
+  const validatePartnerReservation = async (partnerId: string, body: PartnerReservationBody): Promise<PartnerReservationInput> => {
+    const startsAt = new Date(body.startsAt);
+    const endsAt = new Date(body.endsAt);
+    if (!Number.isFinite(startsAt.getTime()) || !Number.isFinite(endsAt.getTime())) {
+      throw new ApiError(400, "INVALID_RESERVATION_TIME", "Проверьте дату и время занятости.");
+    }
+    const durationMinutes = (endsAt.getTime() - startsAt.getTime()) / 60_000;
+    if (durationMinutes < 30 || durationMinutes > 1440 || !Number.isInteger(durationMinutes / 30)) {
+      throw new ApiError(400, "INVALID_RESERVATION_DURATION", "Интервал должен длиться от 30 минут до 24 часов с шагом 30 минут.");
+    }
+    if (startsAt.getTime() < Date.now() - 5 * 60_000) throw new ApiError(400, "RESERVATION_IN_PAST", "Нельзя занять помещение в прошедшем времени.");
+    const startLocal = moscowDateTime(startsAt);
+    const [venue, room] = await Promise.all([
+      config.bookingRepository.getPartnerVenue(partnerId),
+      config.repository.findRoom(body.roomId, startLocal.date),
+    ]);
+    if (!venue || !room || room.venueId !== venue.id) throw new ApiError(404, "PARTNER_ROOM_NOT_FOUND", "Помещение не найдено в кабинете этой площадки.");
+    const startHour = relativeMoscowHour(startsAt, startLocal.date);
+    const endHour = relativeMoscowHour(endsAt, startLocal.date);
+    if (room.closesAtHour <= room.opensAtHour || startHour < room.opensAtHour || endHour > room.closesAtHour) {
+      throw new ApiError(409, "RESERVATION_OUTSIDE_SCHEDULE", "Интервал находится вне рабочего времени помещения.");
+    }
+    const manual = body.type === "manual_booking";
+    const clientName = body.clientName?.trim() || null;
+    const clientPhone = body.clientPhone ? normalizeRussianPhone(body.clientPhone) : null;
+    if (manual && (!clientName || clientName.length < 2)) throw new ApiError(400, "CLIENT_NAME_REQUIRED", "Укажите имя клиента для ручной брони.");
+    if (manual && !clientPhone) throw new ApiError(400, "CLIENT_PHONE_REQUIRED", "Укажите российский номер клиента.");
+    return {
+      roomId: room.id,
+      type: body.type,
+      ...(!manual ? { category: body.category ?? "technical" } : {}),
+      startsAt: startsAt.toISOString(),
+      endsAt: endsAt.toISOString(),
+      clientName,
+      clientPhone,
+      guests: manual ? Math.max(1, Number(body.guests) || 1) : null,
+      amount: manual ? moneyAmount(Math.max(0, Number(body.amount) || 0)) : 0,
+      source: manual ? body.source ?? "phone" : null,
+      comment: body.comment?.trim() ?? "",
+    };
+  };
+
   void app.register(cors, {
     origin: config.corsOrigins,
-    methods: ["GET", "POST", "PATCH", "OPTIONS"],
+    methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
     credentials: true,
   });
 
@@ -560,7 +685,7 @@ export function buildApp(overrides: Partial<AppConfig> = {}): FastifyInstance {
     const localStart = moscowDateTime(startsAt);
     const found = await Promise.all(body.roomIds.map((id) => config.repository.findRoom(id, localStart.date)));
     if (found.some((room) => room === null)) throw new ApiError(404, "ROOM_NOT_FOUND", "Одно из помещений не найдено или временно скрыто.");
-    const selectedRooms = found as Room[];
+    const selectedRooms = await withReservationBlocks(found as Room[], localStart.date);
     const venueIds = new Set(selectedRooms.map((room) => room.venueId));
     if (venueIds.size !== 1) throw new ApiError(400, "VENUE_MISMATCH", "В одной заявке можно выбрать помещения только одной площадки.");
     if (body.durationMinutes < Math.max(...selectedRooms.map((room) => room.minimumHours * 60))) {
@@ -674,6 +799,103 @@ export function buildApp(overrides: Partial<AppConfig> = {}): FastifyInstance {
     return venue;
   });
 
+  app.get<{ Querystring: PartnerReservationQuery }>("/v1/partner/reservations", {
+    schema: {
+      querystring: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          roomId: { type: "string", minLength: 36, maxLength: 36 },
+          dateFrom: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
+          dateTo: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
+          includeCancelled: { type: "boolean" },
+        },
+      },
+    },
+  }, async (request) => {
+    const current = await auth.authenticate(request.headers.authorization);
+    if (!current || current.user.role !== "partner") throw new ApiError(401, "UNAUTHORIZED", "Войдите в кабинет партнёра.");
+    if (request.query.dateFrom && !isIsoDate(request.query.dateFrom)) throw new ApiError(400, "INVALID_DATE", "Проверьте начальную дату календаря.");
+    if (request.query.dateTo && !isIsoDate(request.query.dateTo)) throw new ApiError(400, "INVALID_DATE", "Проверьте конечную дату календаря.");
+    if (request.query.dateFrom && request.query.dateTo && request.query.dateFrom > request.query.dateTo) {
+      throw new ApiError(400, "INVALID_DATE_RANGE", "Начальная дата не может быть позже конечной.");
+    }
+    return config.reservationRepository.listByPartner(current.user.id, request.query);
+  });
+
+  app.post<{ Body: PartnerReservationBody }>("/v1/partner/reservations", {
+    schema: { body: partnerReservationBodySchema },
+  }, async (request, reply) => {
+    const current = await auth.authenticate(request.headers.authorization);
+    if (!current || current.user.role !== "partner") throw new ApiError(401, "UNAUTHORIZED", "Войдите в кабинет партнёра.");
+    const input = await validatePartnerReservation(current.user.id, request.body);
+    return reply.code(201).send(await config.reservationRepository.create(current.user.id, input));
+  });
+
+  app.patch<{ Params: ReservationParams; Body: PartnerReservationBody }>("/v1/partner/reservations/:reservationId", {
+    schema: { params: reservationParamsSchema, body: partnerReservationBodySchema },
+  }, async (request) => {
+    const current = await auth.authenticate(request.headers.authorization);
+    if (!current || current.user.role !== "partner") throw new ApiError(401, "UNAUTHORIZED", "Войдите в кабинет партнёра.");
+    const input = await validatePartnerReservation(current.user.id, request.body);
+    const reservation = await config.reservationRepository.update(current.user.id, request.params.reservationId, input);
+    if (!reservation) throw new ApiError(404, "RESERVATION_NOT_FOUND", "Запись календаря не найдена.");
+    return reservation;
+  });
+
+  app.post<{ Params: ReservationParams; Body: ReservationCancelBody }>("/v1/partner/reservations/:reservationId/cancel", {
+    schema: {
+      params: reservationParamsSchema,
+      body: {
+        type: "object",
+        additionalProperties: false,
+        required: ["reason"],
+        properties: { reason: { type: "string", minLength: 3, maxLength: 1000 } },
+      },
+    },
+  }, async (request) => {
+    const current = await auth.authenticate(request.headers.authorization);
+    if (!current || current.user.role !== "partner") throw new ApiError(401, "UNAUTHORIZED", "Войдите в кабинет партнёра.");
+    const reservation = await config.reservationRepository.cancel(current.user.id, request.params.reservationId, request.body.reason.trim());
+    if (!reservation) throw new ApiError(404, "RESERVATION_NOT_FOUND", "Запись календаря не найдена.");
+    return reservation;
+  });
+
+  app.post<{ Params: ReservationParams }>("/v1/partner/reservations/:reservationId/restore", {
+    schema: { params: reservationParamsSchema },
+  }, async (request) => {
+    const current = await auth.authenticate(request.headers.authorization);
+    if (!current || current.user.role !== "partner") throw new ApiError(401, "UNAUTHORIZED", "Войдите в кабинет партнёра.");
+    const existing = await config.reservationRepository.findByPartner(current.user.id, request.params.reservationId);
+    if (!existing) throw new ApiError(404, "RESERVATION_NOT_FOUND", "Запись календаря не найдена.");
+    await validatePartnerReservation(current.user.id, {
+      roomId: existing.roomId,
+      type: existing.type,
+      ...(existing.category ? { category: existing.category } : {}),
+      startsAt: existing.startsAt,
+      endsAt: existing.endsAt,
+      clientName: existing.clientName,
+      clientPhone: existing.clientPhone,
+      guests: existing.guests,
+      amount: existing.amount,
+      source: existing.source,
+      comment: existing.comment,
+    });
+    const reservation = await config.reservationRepository.restore(current.user.id, request.params.reservationId);
+    if (!reservation) throw new ApiError(404, "RESERVATION_NOT_FOUND", "Запись календаря не найдена.");
+    return reservation;
+  });
+
+  app.delete<{ Params: ReservationParams }>("/v1/partner/reservations/:reservationId", {
+    schema: { params: reservationParamsSchema },
+  }, async (request, reply) => {
+    const current = await auth.authenticate(request.headers.authorization);
+    if (!current || current.user.role !== "partner") throw new ApiError(401, "UNAUTHORIZED", "Войдите в кабинет партнёра.");
+    const deleted = await config.reservationRepository.deleteTechnical(current.user.id, request.params.reservationId);
+    if (!deleted) throw new ApiError(404, "RESERVATION_NOT_FOUND", "Запись календаря не найдена.");
+    return reply.code(204).send();
+  });
+
   app.get<{ Querystring: PartnerBookingQuery }>("/v1/partner/bookings", {
     schema: {
       querystring: {
@@ -765,7 +987,8 @@ export function buildApp(overrides: Partial<AppConfig> = {}): FastifyInstance {
     },
   }, async (request) => {
     const filters = normalizeFilters(request.query);
-    const rooms = await config.repository.searchRooms(filters);
+    const foundRooms = await config.repository.searchRooms(filters);
+    const rooms = filters.date ? await withReservationBlocks(foundRooms, filters.date) : foundRooms;
     const availableRooms = filters.date
       ? rooms.filter((room) => {
           const windows = availabilityForRoom(room, filters.date!, filters.durationMinutes, filters.time);
@@ -813,8 +1036,9 @@ export function buildApp(overrides: Partial<AppConfig> = {}): FastifyInstance {
   }, async (request): Promise<PublicRoomDetail> => {
     const date = request.query.date ?? moscowToday();
     if (!isIsoDate(date)) throw new ApiError(400, "INVALID_DATE", "Дата должна существовать и иметь формат YYYY-MM-DD.");
-    const room = await config.repository.findRoom(request.params.roomId, date);
-    if (!room) throw new ApiError(404, "ROOM_NOT_FOUND", "Помещение не найдено.");
+    const foundRoom = await config.repository.findRoom(request.params.roomId, date);
+    if (!foundRoom) throw new ApiError(404, "ROOM_NOT_FOUND", "Помещение не найдено.");
+    const room = (await withReservationBlocks([foundRoom], date))[0]!;
     const summary = await presentRoom(config.repository, room, config.publicSiteUrl, date);
     return {
       ...summary,
@@ -853,7 +1077,7 @@ export function buildApp(overrides: Partial<AppConfig> = {}): FastifyInstance {
     const found = await Promise.all(body.roomIds.map((id) => config.repository.findRoom(id, body.date)));
     const missing = body.roomIds.filter((_, index) => !found[index]);
     if (missing.length) throw new ApiError(404, "ROOM_NOT_FOUND", "Одно или несколько помещений не найдены.", missing);
-    const rooms = found.filter((room): room is Room => room !== null);
+    const rooms = await withReservationBlocks(found.filter((room): room is Room => room !== null), body.date);
     const capacityFits = !body.guests || rooms.every((room) => room.capacityMax >= body.guests!);
     const windows: AvailabilityWindow[] = capacityFits
       ? intersectAvailability(

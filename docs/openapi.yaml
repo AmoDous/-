@@ -542,9 +542,37 @@ paths:
           description: Room draft created and sent to moderation
 
   /v1/partner/reservations:
+    get:
+      tags: [Partner]
+      operationId: listPartnerReservations
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: roomId
+          in: query
+          schema: {type: string, format: uuid}
+        - name: dateFrom
+          in: query
+          schema: {type: string, format: date}
+        - name: dateTo
+          in: query
+          schema: {type: string, format: date}
+        - name: includeCancelled
+          in: query
+          schema: {type: boolean, default: true}
+      responses:
+        '200':
+          description: Manual bookings and technical blocks belonging to the current partner
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/PartnerReservation'}
+        '401':
+          $ref: '#/components/responses/Unauthorized'
     post:
       tags: [Partner]
-      operationId: createManualReservation
+      operationId: createPartnerReservation
       security:
         - bearerAuth: []
       requestBody:
@@ -552,10 +580,99 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/ManualReservation'
+              $ref: '#/components/schemas/PartnerReservationWrite'
       responses:
         '201':
           description: Manual booking or technical block created immediately
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PartnerReservation'}
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/SlotConflict'
+
+  /v1/partner/reservations/{reservationId}:
+    patch:
+      tags: [Partner]
+      operationId: updatePartnerReservation
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ReservationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/PartnerReservationWrite'}
+      responses:
+        '200':
+          description: Updated calendar record
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PartnerReservation'}
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/SlotConflict'
+    delete:
+      tags: [Partner]
+      operationId: deleteTechnicalReservation
+      description: Permanently deletes a technical block. Manual bookings must be cancelled instead.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ReservationId'
+      responses:
+        '204':
+          description: Technical block deleted
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /v1/partner/reservations/{reservationId}/cancel:
+    post:
+      tags: [Partner]
+      operationId: cancelPartnerReservation
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ReservationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: {type: string, minLength: 3, maxLength: 1000}
+      responses:
+        '200':
+          description: Calendar record cancelled and its time released
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PartnerReservation'}
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/partner/reservations/{reservationId}/restore:
+    post:
+      tags: [Partner]
+      operationId: restorePartnerReservation
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ReservationId'
+      responses:
+        '200':
+          description: Cancelled calendar record restored after a fresh availability check
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PartnerReservation'}
+        '404':
+          $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/SlotConflict'
 
@@ -709,6 +826,11 @@ components:
       schema: {type: string}
     BookingId:
       name: bookingId
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+    ReservationId:
+      name: reservationId
       in: path
       required: true
       schema: {type: string, format: uuid}
@@ -1050,19 +1172,58 @@ components:
         body: {type: string}
         createdAt: {type: string, format: date-time}
 
-    ManualReservation:
+    PartnerReservationWrite:
       type: object
       required: [roomId, startsAt, endsAt, type]
       properties:
         roomId: {type: string, format: uuid}
         startsAt: {type: string, format: date-time}
         endsAt: {type: string, format: date-time}
-        type: {type: string, enum: [manual_booking, technical]}
-        clientName: {type: string}
-        clientPhone: {type: string}
-        guests: {type: integer, minimum: 1}
+        type:
+          type: string
+          enum: [manual_booking, technical]
+          description: Immutable after creation; PATCH may only update a record without changing its type.
+        category: {type: string, enum: [technical, service, private]}
+        clientName: {type: [string, 'null'], minLength: 2, maxLength: 100}
+        clientPhone: {type: [string, 'null']}
+        guests: {type: [integer, 'null'], minimum: 1}
         amount: {type: number, minimum: 0}
+        source: {type: [string, 'null'], enum: [phone, whatsapp, telegram, walk_in, other, null]}
+        comment: {type: string, maxLength: 2000}
+
+    PartnerReservation:
+      type: object
+      required: [id, venueId, roomId, roomSlug, roomTitle, type, status, startsAt, endsAt, bufferMinutes, history, createdAt, updatedAt]
+      properties:
+        id: {type: string, format: uuid}
+        venueId: {type: string, format: uuid}
+        roomId: {type: string, format: uuid}
+        roomSlug: {type: string}
+        roomTitle: {type: string}
+        type: {type: string, enum: [manual_booking, technical]}
+        category: {type: [string, 'null'], enum: [technical, service, private, null]}
+        status: {type: string, enum: [active, cancelled]}
+        startsAt: {type: string, format: date-time}
+        endsAt: {type: string, format: date-time}
+        clientName: {type: [string, 'null']}
+        clientPhone: {type: [string, 'null']}
+        guests: {type: [integer, 'null'], minimum: 1}
+        amount: {type: number, minimum: 0}
+        source: {type: [string, 'null'], enum: [phone, whatsapp, telegram, walk_in, other, null]}
         comment: {type: string}
+        cancellationReason: {type: [string, 'null']}
+        bufferMinutes: {type: integer, minimum: 0}
+        history:
+          type: array
+          items:
+            type: object
+            required: [title, details, created]
+            properties:
+              title: {type: string}
+              details: {type: string}
+              created: {type: string, format: date-time}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
 
     TimeProposal:
       type: object

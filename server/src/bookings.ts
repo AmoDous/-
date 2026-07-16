@@ -286,6 +286,26 @@ export class MemoryBookingRepository implements BookingRepository {
     return structuredClone(booking);
   }
 
+  hasReservationConflict(roomId: string, startsAt: number, endsAt: number, excludeOwnerId = ""): boolean {
+    this.releaseExpired();
+    return this.reservations.some((reservation) => (
+      reservation.active
+      && reservation.roomId === roomId
+      && reservation.bookingId !== excludeOwnerId
+      && startsAt < reservation.endsAt
+      && endsAt > reservation.startsAt
+    ));
+  }
+
+  setExternalReservation(ownerId: string, roomId: string, startsAt: number, endsAt: number): void {
+    this.removeExternalReservation(ownerId);
+    this.reservations.push({ bookingId: ownerId, roomId, startsAt, endsAt, expiresAt: Number.POSITIVE_INFINITY, active: true });
+  }
+
+  removeExternalReservation(ownerId: string): void {
+    for (const reservation of this.reservations) if (reservation.bookingId === ownerId) reservation.active = false;
+  }
+
   private partnerBooking(partnerId: string, bookingId: string): BookingRecord | null {
     const venue = this.partnerVenues.get(partnerId);
     return venue ? this.bookings.find((booking) => booking.id === bookingId && booking.venue.id === venue.id) ?? null : null;

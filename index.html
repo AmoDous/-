@@ -1127,12 +1127,22 @@
     async function syncApiBookings(){if(!apiState.connected||!apiState.accessToken)return [];return mergeApiBookings(await apiRequest("/v1/bookings?statusGroup=all",{auth:true}))}
     function mergePartnerApiBookings(items){const mapped=(items||[]).map(localBookingFromApi);apiState.partnerBookingsLoaded=true;write(store.bookings,mapped.slice(0,100));return mapped}
     async function syncPartnerApiBookings(){if(!apiState.connected||!apiState.accessToken)return [];return mergePartnerApiBookings(await apiRequest("/v1/partner/bookings?statusGroup=all",{auth:true}))}
+    function partnerReservationFromApi(item){
+      const localRoom=rooms.find(room=>room.apiId===item.roomId||room.id===item.roomSlug),start=apiBookingDateTime(item.startsAt),end=apiBookingDateTime(item.endsAt),base=new Date(`${start.date}T00:00:00Z`),endDate=new Date(`${end.date}T00:00:00Z`),dayOffset=Math.round((endDate-base)/86400000),startHour=Number(start.time.slice(0,2))+Number(start.time.slice(3))/60,endHour=dayOffset*24+Number(end.time.slice(0,2))+Number(end.time.slice(3))/60,technicalType=({technical:"tech",service:"service",private:"private"})[item.category]||"tech";
+      return {roomId:localRoom?.id||item.roomSlug||item.roomId,date:start.date,item:{id:item.id,kind:item.type==="manual_booking"?"booking":"block",type:item.type==="manual_booking"?"manual":technicalType,status:item.status||"active",start:startHour,end:endHour,comment:item.comment||"",clientName:item.clientName||"",clientPhone:item.clientPhone||"",guests:Number(item.guests)||0,amount:Number(item.amount)||0,source:item.source||"phone",cancelReason:item.cancellationReason||"",created:item.createdAt,updatedAt:item.updatedAt,history:Array.isArray(item.history)?item.history:[],server:true}};
+    }
+    function mergePartnerApiReservations(items){
+      const data=partnerData(),manualBusy={};
+      (items||[]).map(partnerReservationFromApi).forEach(({roomId,date,item})=>{const key=busyKey(roomId,date);manualBusy[key]=[...(manualBusy[key]||[]),item].sort((a,b)=>Number(a.start)-Number(b.start))});
+      data.manualBusy=manualBusy;data.busy={};savePartnerData(data);applyPartnerData();return items||[];
+    }
+    async function syncPartnerApiReservations(){if(!apiState.connected||!apiState.accessToken)return [];return mergePartnerApiReservations(await apiRequest("/v1/partner/reservations?includeCancelled=true",{auth:true}))}
     function syncApiPartnerVenue(venueData){
       mergeApiVenue(venueData);const auth=partnerAuthSession(),list=ensurePartnerAccounts(),currentAccount=list.find(item=>item.id===auth?.accountId||item.api===true),account=currentAccount?{...currentAccount,venueId:venueData.slug,venueTitle:venueData.title,status:"active",api:true}:currentAccount;
       if(account){savePartnerAccounts([account,...list.filter(item=>item.id!==account.id)]);write(store.partnerAuth,{...auth,accountId:account.id,verified:true,api:true})}
       const data=partnerData();data.venue={...data.venue,id:venueData.slug,apiId:venueData.id,city:venueData.city,title:venueData.title,address:venueData.address,paymentMethods:venueData.paymentMethods,publicationStatus:venueData.publicationStatus,partnerMode:venueData.partnerMode};savePartnerData(data);return account;
     }
-    async function syncPartnerApiContext(){const venueData=await apiRequest("/v1/partner/venue",{auth:true});syncApiPartnerVenue(venueData);return syncPartnerApiBookings()}
+    async function syncPartnerApiContext(){const venueData=await apiRequest("/v1/partner/venue",{auth:true});syncApiPartnerVenue(venueData);const [bookings,reservations]=await Promise.all([syncPartnerApiBookings(),syncPartnerApiReservations()]);return {bookings,reservations}}
     async function restoreApiSession(){
       const session=read(store.session,null),account=session?accounts().find(item=>item.id===session.id):null,partnerSession=partnerAuthSession();
       if((!session||(!session.source&&!account?.api))&&!partnerSession?.api)return null;
@@ -3614,26 +3624,40 @@
       }
       logActivity("photo_moderation","Партнёр отправил изменение фото на проверку",type==="venue"?data.venue.title:(data.rooms[roomId]?.title||"помещение"),"partner");hydrate();renderPartnerCabinet(true);toast("Изменение фотографии отправлено на проверку Rooms.");
     }
+    function partnerApiEnabled(){return apiState.connected&&!!currentPartnerAccount()?.api&&!!apiState.accessToken}
+    function apiDateTimeFromHour(date,value){
+      const totalMinutes=Math.round(Number(value)*60),dayOffset=Math.floor(totalMinutes/1440),minutes=((totalMinutes%1440)+1440)%1440,d=new Date(`${date}T00:00:00Z`);d.setUTCDate(d.getUTCDate()+dayOffset);return `${d.toISOString().slice(0,10)}T${String(Math.floor(minutes/60)).padStart(2,"0")}:${String(minutes%60).padStart(2,"0")}:00+03:00`;
+    }
+    function apiPartnerReservationPayload({roomId,date,start,end,type="manual",clientName="",clientPhone="",guests=0,amount=0,source="phone",comment=""}){
+      const r=rooms.find(item=>item.id===roomId),manual=type==="manual",category=type==="service"?"service":type==="private"?"private":"technical";
+      return {roomId:r?.apiId||roomId,type:manual?"manual_booking":"technical",...(!manual?{category}:{}),startsAt:apiDateTimeFromHour(date,start),endsAt:apiDateTimeFromHour(date,end),...(manual?{clientName,clientPhone,guests:Math.max(1,Number(guests)||1),amount:Math.max(0,Number(amount)||0),source}:{}),comment};
+    }
+    async function refreshPartnerCalendar(){await syncPartnerApiReservations();applyPartnerData();hydrate()}
     function manualBookingHasConflict(r,date,start,end,excludeId=""){
       const bookingConflict=blockHours(bufferedBlocks(r,bookingBusyBlocks(r,date))).some(h=>h>=start&&h<end),manualConflict=blockHours(bufferedBlocks(r,partnerBusyBlocks(r,date,excludeId))).some(h=>h>=start&&h<end);
       return bookingConflict||manualConflict;
     }
-    function saveManualBookingEdit(form){
+    async function saveManualBookingEdit(form){
       const fd=new FormData(form),original=String(fd.get("original")||""),data=partnerData(),record=findManualBooking(original,data),item=record.item;if(!item)return toast("Ручная бронь не найдена.");
       const roomId=String(fd.get("room")||""),date=String(fd.get("date")||""),start=Number(fd.get("start")),end=Number(fd.get("end")),clientName=String(fd.get("clientName")||"").trim(),clientPhone=String(fd.get("clientPhone")||"").trim(),guests=Math.max(1,Number(fd.get("guests"))||1),amount=Math.max(0,Number(fd.get("amount"))||0),source=String(fd.get("source")||"phone"),comment=String(fd.get("comment")||"").trim(),r=rooms.find(x=>x.id===roomId),work=r?effectiveWork(r,date):null;
       if(clientName.length<2)return toast("Укажите имя клиента.");if(phone(clientPhone).length<10)return toast("Укажите корректный телефон клиента.");if(!r)return toast("Помещение не найдено.");if(!work)return toast("Площадка не работает в выбранную дату.");if(!Number.isFinite(start)||!Number.isFinite(end)||end<=start||start<work[0]||end>work[1])return toast("Проверьте время брони.");if((item.status||"active")!=="cancelled"&&manualBookingHasConflict(r,date,start,end,item.id))return toast("Новый интервал пересекается с другой бронью или служебной занятостью.");
+      if(partnerApiEnabled()&&item.server){
+        try{await apiRequest(`/v1/partner/reservations/${item.id}`,{method:"PATCH",auth:true,body:apiPartnerReservationPayload({roomId,date,start,end,type:"manual",clientName,clientPhone,guests,amount,source,comment})});await refreshPartnerCalendar();state.partnerRoom=roomId;state.partnerDate=date;state.partnerWeekStart=date;renderPartnerCabinet();toast("Ручная бронь сохранена на сервере, календарь обновлён.")}catch(error){toast(error.message||"Не удалось изменить ручную бронь.")}return;
+      }
       const moved=record.roomId!==roomId||record.date!==date||Number(item.start)!==start||Number(item.end)!==end,created=new Date().toISOString(),updated={...item,kind:"booking",type:"manual",status:item.status||"active",clientName,clientPhone,guests,amount,source,comment,start,end,updatedAt:created,history:[...(item.history||[]),{title:moved?"Бронь перенесена":"Данные брони изменены",details:moved?`${record.date} ${intervalText(item.start,item.end)} → ${date} ${intervalText(start,end)}`:"Контакты, сумма или комментарий обновлены",created}]};
       data.manualBusy={...(data.manualBusy||{})};data.manualBusy[record.key]=(data.manualBusy[record.key]||[]).filter(x=>x.id!==item.id);if(!data.manualBusy[record.key].length)delete data.manualBusy[record.key];const nextKey=busyKey(roomId,date);data.manualBusy[nextKey]=[...(data.manualBusy[nextKey]||[]),updated].sort((a,b)=>Number(a.start)-Number(b.start));state.partnerRoom=roomId;state.partnerDate=date;state.partnerWeekStart=date;savePartnerData(data);logActivity(moved?"manual_booking_move":"manual_booking_edit",moved?"Партнёр перенёс ручную бронь":"Партнёр изменил ручную бронь",`${clientName} · ${r.title} · ${date} · ${intervalText(start,end)}`,"partner");applyPartnerData();hydrate();renderPartnerCabinet();toast(moved?"Бронь перенесена, календарь обновлён.":"Данные ручной брони сохранены.");
     }
-    function cancelManualBooking(form){
+    async function cancelManualBooking(form){
       const fd=new FormData(form),payload=String(fd.get("payload")||""),reason=String(fd.get("reason")||"").trim(),data=partnerData(),record=findManualBooking(payload,data),item=record.item;if(!item)return toast("Ручная бронь не найдена.");if(reason.length<3)return toast("Укажите причину отмены.");
+      if(partnerApiEnabled()&&item.server){try{await apiRequest(`/v1/partner/reservations/${item.id}/cancel`,{method:"POST",auth:true,body:{reason}});await refreshPartnerCalendar();renderPartnerCabinet();toast("Бронь отменена, время снова доступно клиентам.")}catch(error){toast(error.message||"Не удалось отменить ручную бронь.")}return}
       const created=new Date().toISOString(),updated={...item,status:"cancelled",cancelReason:reason,cancelledAt:created,history:[...(item.history||[]),{title:"Бронь отменена",details:reason,created}]};data.manualBusy[record.key]=(data.manualBusy[record.key]||[]).map(x=>x.id===item.id?updated:x);savePartnerData(data);logActivity("manual_booking_cancel","Партнёр отменил ручную бронь",`${item.clientName||"Клиент"} · ${record.date} · ${reason}`,"partner");applyPartnerData();hydrate();renderPartnerCabinet();toast("Бронь отменена, время снова доступно клиентам.");
     }
-    function restoreManualBooking(payload){
+    async function restoreManualBooking(payload){
       const data=partnerData(),record=findManualBooking(payload,data),item=record.item,r=rooms.find(x=>x.id===record.roomId);if(!item||!r)return toast("Ручная бронь не найдена.");const work=effectiveWork(r,record.date);if(record.date<today)return toast("Нельзя восстановить бронь на прошедшую дату.");if(!work||Number(item.start)<work[0]||Number(item.end)>work[1])return toast("Интервал находится вне рабочего времени.");if(manualBookingHasConflict(r,record.date,Number(item.start),Number(item.end),item.id))return toast("Время уже занято. Сначала перенесите отменённую бронь на свободный интервал.");
+      if(partnerApiEnabled()&&item.server){try{await apiRequest(`/v1/partner/reservations/${item.id}/restore`,{method:"POST",auth:true});await refreshPartnerCalendar();renderPartnerCabinet();toast("Бронь восстановлена и снова занимает время.")}catch(error){toast(error.message||"Не удалось восстановить ручную бронь.")}return}
       const created=new Date().toISOString(),updated={...item,status:"active",cancelReason:"",cancelledAt:"",updatedAt:created,history:[...(item.history||[]),{title:"Бронь восстановлена",details:`${record.date} · ${intervalText(item.start,item.end)}`,created}]};data.manualBusy[record.key]=(data.manualBusy[record.key]||[]).map(x=>x.id===item.id?updated:x);savePartnerData(data);logActivity("manual_booking_restore","Партнёр восстановил ручную бронь",`${item.clientName||"Клиент"} · ${record.date} · ${intervalText(item.start,item.end)}`,"partner");applyPartnerData();hydrate();renderPartnerCabinet();toast("Бронь восстановлена и снова занимает время.");
     }
-    function createPartnerManualBusy(form){
+    async function createPartnerManualBusy(form){
       const fd=new FormData(form),id=fd.get("room"),date=fd.get("date"),start=Number(fd.get("start")),end=Number(fd.get("end")),type=fd.get("type")||"manual",comment=String(fd.get("comment")||"").trim(),clientName=String(fd.get("clientName")||"").trim(),clientPhone=String(fd.get("clientPhone")||"").trim(),guests=Math.max(0,Number(fd.get("guests"))||0),amount=Math.max(0,Number(fd.get("amount"))||0),source=String(fd.get("source")||"phone");
       const data=partnerData(),r=rooms.find(x=>x.id===id),key=busyKey(id,date);
       if(!r)return toast("Помещение не найдено.");
@@ -3645,23 +3669,31 @@
       if(start<work[0]||end>work[1])return toast("Интервал должен быть внутри рабочего времени помещения.");
       if(blockHours(bufferedBlocks(r,bookingBusyBlocks(r,date))).some(h=>h>=start&&h<end))return toast("Интервал пересекается с оплаченной или ожидающей оплату заявкой.");
       if(blockHours(bufferedBlocks(r,partnerBusyBlocks(r,date))).some(h=>h>=start&&h<end))return toast("Этот интервал уже закрыт вручную или попадает в буфер.");
+      if(partnerApiEnabled()){
+        try{await apiRequest("/v1/partner/reservations",{method:"POST",auth:true,body:apiPartnerReservationPayload({roomId:id,date,start,end,type,clientName,clientPhone,guests,amount,source,comment})});await refreshPartnerCalendar();state.partnerRoom=id;state.partnerDate=date;renderPartnerCabinet(true);toast(type==="manual"?"Ручная бронь добавлена в серверный календарь.":"Занятость добавлена в серверный календарь.")}catch(error){toast(error.message||"Не удалось добавить занятость.")}return;
+      }
       data.manualBusy={...(data.manualBusy||{})};
       const created=new Date().toISOString(),item={id:`M-${Date.now().toString(36)}`,kind:type==="manual"?"booking":"block",type,status:"active",start,end,comment,created,...(type==="manual"?{clientName,clientPhone,guests,amount,source,history:[{title:"Ручная бронь создана",details:`${manualSourceLabel(source)} · ${date} · ${intervalText(start,end)}`,created}]}: {})};
       data.manualBusy[key]=[...(data.manualBusy[key]||[]),item].sort((a,b)=>a.start-b.start);
       state.partnerRoom=id;state.partnerDate=date;savePartnerData(data);logActivity("busy_create",type==="manual"?"Партнёр добавил ручную бронь":"Партнёр добавил занятость",`${r.title} · ${date} · ${intervalText(start,end)} · ${busyTypeLabel(type)}${type==="manual"?` · ${clientName}`:""}`,"partner");applyPartnerData();hydrate();renderPartnerCabinet(true);toast(type==="manual"?"Ручная бронь добавлена в календарь.":"Занятость добавлена в календарь.");
     }
-    function deletePartnerManualBusy(payload){
+    async function deletePartnerManualBusy(payload){
       const [id,date,itemId]=payload.split("|"),data=partnerData(),key=busyKey(id,date);
+      const item=(data.manualBusy?.[key]||[]).find(x=>x.id===itemId);if(partnerApiEnabled()&&item?.server){try{await apiRequest(`/v1/partner/reservations/${item.id}`,{method:"DELETE",auth:true});await refreshPartnerCalendar();state.partnerRoom=id;state.partnerDate=date;renderPartnerCabinet(true);toast("Ручная занятость удалена.")}catch(error){toast(error.message||"Не удалось удалить занятость.")}return}
       data.manualBusy={...(data.manualBusy||{})};
       data.manualBusy[key]=(data.manualBusy[key]||[]).filter(x=>x.id!==itemId);
       if(!data.manualBusy[key].length)delete data.manualBusy[key];
       state.partnerRoom=id;state.partnerDate=date;savePartnerData(data);logActivity("busy_delete","Партнёр удалил ручную занятость",`${id} · ${date}`,"partner");applyPartnerData();hydrate();renderPartnerCabinet(true);toast("Ручная занятость удалена.");
     }
-    function togglePartnerBusy(payload){
+    async function togglePartnerBusy(payload){
       const [id,date,hRaw]=payload.split("|"),h=Number(hRaw),data=partnerData(),key=busyKey(id,date),set=new Set(legacyBusyHours(data,id,date));
       const r=rooms.find(x=>x.id===id);
       if(r&&blockHours(bufferedBlocks(r,bookingBusyBlocks(r,date))).includes(h))return toast("Этот интервал занят подтверждённой заявкой или буфером.");
       const item=partnerBusyItemAt(id,date,h,data);
+      if(partnerApiEnabled()){
+        if(item?.server&&isManualBooking(item)){renderManualBookingEditor(`${id}|${date}|${item.id}`);return}
+        try{if(item?.server)await apiRequest(`/v1/partner/reservations/${item.id}`,{method:"DELETE",auth:true});else await apiRequest("/v1/partner/reservations",{method:"POST",auth:true,body:apiPartnerReservationPayload({roomId:id,date,start:h,end:h+slotStep,type:"tech",comment:"Быстро закрыто из сетки"})});await refreshPartnerCalendar();state.partnerRoom=id;state.partnerDate=date;renderPartnerCabinet(true);toast(item?"Интервал снова свободен.":"Интервал отмечен занятым.")}catch(error){toast(error.message||"Не удалось изменить интервал.")}return;
+      }
       if(item){
         data.manualBusy={...(data.manualBusy||{})};
         data.manualBusy[key]=(data.manualBusy[key]||[]).filter(x=>x.id!==item.id);
@@ -3679,12 +3711,24 @@
       if(!data.busy[key].length)delete data.busy[key];
       state.partnerRoom=id;state.partnerDate=date;savePartnerData(data);logActivity(hadLegacy?"busy_open":"busy_quick","Партнёр изменил слот занятости",`${r?.title||id} · ${date} · ${hourLabel(h)}`,"partner");applyPartnerData();hydrate();renderPartnerCabinet(true);toast(hadLegacy?"Слот снова свободен.":"Слот отмечен занятым.");
     }
-    function setPartnerDayBusy(payload){
+    async function setPartnerDayBusy(payload){
       const [id,date,mode]=payload.split("|"),data=partnerData(),r=rooms.find(x=>x.id===id),key=busyKey(id,date);
       if(!r)return;
       const work=effectiveWork(r,date);
       if(mode!=="open"&&!work)return toast("По недельному графику площадка в этот день не работает.");
       data.manualBusy={...(data.manualBusy||{})};
+      if(partnerApiEnabled()){
+        try{
+          const existing=partnerManualItems(id,date,data),technical=existing.filter(item=>item.server&&!isManualBooking(item));
+          for(const item of technical)await apiRequest(`/v1/partner/reservations/${item.id}`,{method:"DELETE",auth:true});
+          if(mode!=="open"){
+            const occupied=new Set([...blockHours(bufferedBlocks(r,bookingBusyBlocks(r,date))),...blockHours(bufferedBlocks(r,existing.filter(item=>isManualBooking(item)&&item.status!=="cancelled").map(item=>[item.start,item.end])))]),hours=Array.from({length:Math.round((work[1]-work[0])/slotStep)},(_,i)=>work[0]+i*slotStep).filter(h=>!occupied.has(h)),intervals=[];let start=null,last=null;
+            hours.forEach(h=>{if(start===null){start=h;last=h}else if(h===last+slotStep)last=h;else{intervals.push([start,last+slotStep]);start=h;last=h}});if(start!==null)intervals.push([start,last+slotStep]);
+            for(const [a,b] of intervals)await apiRequest("/v1/partner/reservations",{method:"POST",auth:true,body:apiPartnerReservationPayload({roomId:id,date,start:a,end:b,type:"service",comment:"День закрыт вручную"})});
+          }
+          await refreshPartnerCalendar();state.partnerRoom=id;state.partnerDate=date;renderPartnerCabinet(true);toast(mode==="open"?"Техническая занятость снята, ручные брони сохранены.":"Свободные интервалы дня закрыты на сервере.");
+        }catch(error){await refreshPartnerCalendar().catch(()=>{});renderPartnerCabinet(true);toast(error.message||"Не удалось изменить занятость дня.")}return;
+      }
       if(mode==="open"){delete data.busy[key];delete data.manualBusy[key]}
       else{
         const booked=new Set(blockHours(bufferedBlocks(r,bookingBusyBlocks(r,date))));

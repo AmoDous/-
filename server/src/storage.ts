@@ -4,12 +4,14 @@ import { MemoryBookingRepository, PostgresBookingRepository, type BookingReposit
 import { MemoryCatalogRepository, type CatalogRepository } from "./catalog.js";
 import { MemoryPaymentRepository, PostgresPaymentRepository, type PaymentRepository } from "./payments.js";
 import { PostgresCatalogRepository } from "./postgresCatalog.js";
+import { MemoryPartnerReservationRepository, PostgresPartnerReservationRepository, type PartnerReservationRepository } from "./reservations.js";
 
 export interface CatalogStorage {
   repository: CatalogRepository;
   authRepository: AuthRepository;
   bookingRepository: BookingRepository;
   paymentRepository: PaymentRepository;
+  reservationRepository: PartnerReservationRepository;
   close(): Promise<void>;
 }
 
@@ -43,11 +45,13 @@ export async function createCatalogStorage(env: NodeJS.ProcessEnv = process.env)
   const connectionString = env.DATABASE_URL?.trim();
   if (!connectionString) {
     const bookingRepository = new MemoryBookingRepository();
+    const repository = new MemoryCatalogRepository();
     return {
-      repository: new MemoryCatalogRepository(),
+      repository,
       authRepository: new MemoryAuthRepository(),
       bookingRepository,
       paymentRepository: new MemoryPaymentRepository(bookingRepository),
+      reservationRepository: new MemoryPartnerReservationRepository(bookingRepository, repository),
       close: async () => undefined,
     };
   }
@@ -63,6 +67,7 @@ export async function createCatalogStorage(env: NodeJS.ProcessEnv = process.env)
     authRepository: new PostgresAuthRepository(pool),
     bookingRepository: new PostgresBookingRepository(pool),
     paymentRepository: new PostgresPaymentRepository(pool),
+    reservationRepository: new PostgresPartnerReservationRepository(pool),
     close: () => pool.end(),
   };
 }

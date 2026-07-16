@@ -12,6 +12,7 @@
     "db:migrate": "tsx scripts/migrate.ts",
     "db:seed": "tsx scripts/seed.ts",
     "smoke:partner-catalog": "tsx scripts/smoke-partner-catalog.ts",
+    "smoke:auth-security": "tsx scripts/smoke-auth-security.ts",
     "start": "node dist/server.js",
     "test": "node --import tsx --test test/**/*.test.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"

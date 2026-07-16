@@ -3,7 +3,7 @@ import Fastify, { type FastifyError, type FastifyInstance, type FastifyReply } f
 import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { AuthConflictError, AuthService, MemoryAuthRepository, normalizeRussianPhone, type AuthRepository, type IssuedAuthSession } from "./auth.js";
+import { AuthConflictError, AuthService, MemoryAuthRepository, normalizeRussianPhone, passwordResetLifetimeSeconds, type AuthRepository, type IssuedAuthSession } from "./auth.js";
 import { MemoryBookingRepository, type BookingRepository, type BookingStatusGroup, type PartnerBookingStatusGroup } from "./bookings.js";
 import { MemoryCatalogRepository, type CatalogRepository } from "./catalog.js";
 import { MemoryPaymentRepository, type PaymentRepository } from "./payments.js";
@@ -47,6 +47,7 @@ interface AppConfig {
   authTokenSecret: string;
   secureCookies: boolean;
   enableDemoPayments: boolean;
+  exposePasswordResetToken: boolean;
 }
 
 interface SearchQuery {
@@ -97,6 +98,19 @@ interface ClientRegistrationBody {
 interface LoginBody {
   login: string;
   password: string;
+}
+
+interface PasswordResetRequestBody {
+  login: string;
+}
+
+interface PasswordResetConfirmBody {
+  token: string;
+  newPassword: string;
+}
+
+interface SessionParams {
+  sessionId: string;
 }
 
 interface ClientProfileBody {
@@ -521,10 +535,13 @@ export function buildApp(overrides: Partial<AppConfig> = {}): FastifyInstance {
     authTokenSecret: overrides.authTokenSecret ?? "rooms-local-development-secret-change-me-2026",
     secureCookies: overrides.secureCookies ?? false,
     enableDemoPayments: overrides.enableDemoPayments ?? true,
+    exposePasswordResetToken: overrides.exposePasswordResetToken ?? false,
   };
   const app = Fastify({ logger: config.logger });
   const auth = new AuthService(config.authRepository, config.authTokenSecret);
   const authAttempts = new AuthAttemptLimiter();
+  const passwordResetAttempts = new AuthAttemptLimiter();
+  const passwordResetConfirmAttempts = new AuthAttemptLimiter();
 
   const requirePartnerVenue = async (authorization: string | undefined) => {
     const current = await auth.authenticate(authorization);
@@ -795,6 +812,64 @@ export function buildApp(overrides: Partial<AppConfig> = {}): FastifyInstance {
     return authResponse(session);
   });
 
+  app.post<{ Body: PasswordResetRequestBody }>("/v1/auth/password-reset/request", {
+    schema: {
+      body: {
+        type: "object",
+        additionalProperties: false,
+        required: ["login"],
+        properties: { login: { type: "string", minLength: 3, maxLength: 254 } },
+      },
+    },
+  }, async (request, reply) => {
+    const login = request.body.login.trim();
+    const attemptKey = `password-reset|${request.ip}`;
+    if (passwordResetAttempts.blocked(attemptKey)) {
+      throw new ApiError(429, "PASSWORD_RESET_RATE_LIMITED", "Слишком много запросов. Попробуйте снова через 10 минут.");
+    }
+    passwordResetAttempts.fail(attemptKey);
+    const token = await auth.requestPasswordReset(login, request.ip, request.headers["user-agent"] ?? null);
+    const payload: Record<string, unknown> = {
+      accepted: true,
+      expiresIn: passwordResetLifetimeSeconds,
+      message: "Если кабинет найден, ссылка для смены пароля уже отправлена.",
+    };
+    if (config.exposePasswordResetToken) {
+      const resetUrl = new URL(config.publicSiteUrl);
+      resetUrl.searchParams.set("reset", token);
+      payload.demoToken = token;
+      payload.demoResetUrl = resetUrl.toString();
+    }
+    return reply.code(202).send(payload);
+  });
+
+  app.post<{ Body: PasswordResetConfirmBody }>("/v1/auth/password-reset/confirm", {
+    schema: {
+      body: {
+        type: "object",
+        additionalProperties: false,
+        required: ["token", "newPassword"],
+        properties: {
+          token: { type: "string", minLength: 32, maxLength: 200 },
+          newPassword: { type: "string", minLength: 8, maxLength: 128 },
+        },
+      },
+    },
+  }, async (request, reply) => {
+    const attemptKey = `password-reset-confirm|${request.ip}`;
+    if (passwordResetConfirmAttempts.blocked(attemptKey)) {
+      throw new ApiError(429, "PASSWORD_RESET_RATE_LIMITED", "Слишком много попыток. Попробуйте снова через 10 минут.");
+    }
+    const completed = await auth.resetPassword(request.body.token, request.body.newPassword);
+    if (!completed) {
+      passwordResetConfirmAttempts.fail(attemptKey);
+      throw new ApiError(400, "PASSWORD_RESET_INVALID", "Ссылка устарела или уже была использована.");
+    }
+    passwordResetConfirmAttempts.clear(attemptKey);
+    clearRefreshCookie(reply, config.secureCookies);
+    return reply.code(204).send();
+  });
+
   app.post("/v1/auth/refresh", async (request, reply) => {
     const token = cookieValue(request.headers.cookie, "rooms_refresh");
     const session = token ? await auth.refresh(token, request.ip, request.headers["user-agent"] ?? null) : null;
@@ -817,6 +892,39 @@ export function buildApp(overrides: Partial<AppConfig> = {}): FastifyInstance {
     const current = await auth.authenticate(request.headers.authorization);
     if (!current) throw new ApiError(401, "UNAUTHORIZED", "Войдите в личный кабинет.");
     return current.user;
+  });
+
+  app.get("/v1/me/sessions", async (request) => {
+    const current = await auth.authenticate(request.headers.authorization);
+    if (!current) throw new ApiError(401, "UNAUTHORIZED", "Войдите в личный кабинет.");
+    return { items: await auth.listSessions(current.user.id, current.sessionId) };
+  });
+
+  app.delete("/v1/me/sessions/others", async (request, reply) => {
+    const current = await auth.authenticate(request.headers.authorization);
+    if (!current) throw new ApiError(401, "UNAUTHORIZED", "Войдите в личный кабинет.");
+    await auth.revokeOtherUserSessions(current.user.id, current.sessionId);
+    return reply.code(204).send();
+  });
+
+  app.delete<{ Params: SessionParams }>("/v1/me/sessions/:sessionId", {
+    schema: {
+      params: {
+        type: "object",
+        additionalProperties: false,
+        required: ["sessionId"],
+        properties: {
+          sessionId: { type: "string", pattern: "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$" },
+        },
+      },
+    },
+  }, async (request, reply) => {
+    const current = await auth.authenticate(request.headers.authorization);
+    if (!current) throw new ApiError(401, "UNAUTHORIZED", "Войдите в личный кабинет.");
+    const revoked = await auth.revokeUserSession(current.user.id, request.params.sessionId);
+    if (!revoked) throw new ApiError(404, "SESSION_NOT_FOUND", "Активная сессия не найдена.");
+    if (current.sessionId === request.params.sessionId) clearRefreshCookie(reply, config.secureCookies);
+    return reply.code(204).send();
   });
 
   app.patch<{ Body: ClientProfileBody }>("/v1/me", {

@@ -9,6 +9,7 @@ const migrations = [
   { name: "0001_initial", url: new URL("../../docs/database.sql", import.meta.url) },
   { name: "0002_booking_conversations", url: new URL("../../docs/migrations/0002_booking_conversations.sql", import.meta.url) },
   { name: "0003_partner_catalog", url: new URL("../../docs/migrations/0003_partner_catalog.sql", import.meta.url) },
+  { name: "0004_auth_security", url: new URL("../../docs/migrations/0004_auth_security.sql", import.meta.url) },
 ];
 const pool = new Pool({ ...postgresPoolConfig(), max: 1, application_name: "rooms-migrate" });
 const client = await pool.connect();

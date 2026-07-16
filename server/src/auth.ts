@@ -39,8 +39,33 @@ export interface AuthSessionRecord {
   id: string;
   userId: string;
   refreshTokenHash: string;
+  userAgent: string | null;
+  ip: string | null;
   expiresAt: string;
   revokedAt: string | null;
+  createdAt: string;
+  lastSeenAt: string;
+}
+
+export interface PublicAuthSession {
+  id: string;
+  userAgent: string | null;
+  ip: string | null;
+  expiresAt: string;
+  createdAt: string;
+  lastSeenAt: string;
+  current: boolean;
+}
+
+export interface PasswordResetRecord {
+  id: string;
+  userId: string;
+  tokenHash: string;
+  expiresAt: string;
+  consumedAt: string | null;
+  ip: string | null;
+  userAgent: string | null;
+  createdAt: string;
 }
 
 export interface ClientProfileUpdate {
@@ -58,11 +83,16 @@ export interface AuthRepository {
   findUserById(id: string): Promise<AuthUser | null>;
   updateClientProfile(id: string, input: ClientProfileUpdate): Promise<AuthUser | null>;
   touchUser(id: string): Promise<void>;
-  createSession(input: AuthSessionRecord & { ip: string | null; userAgent: string | null }): Promise<void>;
+  createSession(input: AuthSessionRecord): Promise<void>;
   findSession(id: string): Promise<AuthSessionRecord | null>;
   consumeSession(id: string, refreshTokenHash: string): Promise<AuthSessionRecord | null>;
+  touchSession(id: string): Promise<void>;
+  listSessions(userId: string): Promise<AuthSessionRecord[]>;
   revokeSession(id: string): Promise<void>;
+  revokeSessionForUser(userId: string, sessionId: string): Promise<boolean>;
   revokeOtherSessions(userId: string, exceptSessionId: string): Promise<void>;
+  createPasswordReset(input: PasswordResetRecord): Promise<void>;
+  completePasswordReset(tokenHash: string, passwordHash: string, completedAt: string): Promise<boolean>;
 }
 
 export class AuthConflictError extends Error {
@@ -87,8 +117,12 @@ interface SessionRow extends QueryResultRow {
   id: string;
   user_id: string;
   refresh_token_hash: string;
+  user_agent: string | null;
+  ip: string | null;
   expires_at: Date | string;
   revoked_at: Date | string | null;
+  created_at: Date | string;
+  last_seen_at: Date | string;
 }
 
 function iso(value: Date | string | null): string | null {
@@ -115,8 +149,12 @@ function sessionFromRow(row: SessionRow): AuthSessionRecord {
     id: row.id,
     userId: row.user_id,
     refreshTokenHash: row.refresh_token_hash,
+    userAgent: row.user_agent,
+    ip: row.ip,
     expiresAt: iso(row.expires_at)!,
     revokedAt: iso(row.revoked_at),
+    createdAt: iso(row.created_at)!,
+    lastSeenAt: iso(row.last_seen_at)!,
   };
 }
 
@@ -124,6 +162,7 @@ export class MemoryAuthRepository implements AuthRepository {
   readonly storage = "memory" as const;
   private readonly users = new Map<string, AuthUser>();
   private readonly sessions = new Map<string, AuthSessionRecord>();
+  private readonly passwordResets = new Map<string, PasswordResetRecord>();
 
   constructor(initialUsers: AuthUser[] = []) {
     for (const user of initialUsers) this.users.set(user.id, structuredClone(user));
@@ -200,9 +239,29 @@ export class MemoryAuthRepository implements AuthRepository {
     return structuredClone(found);
   }
 
+  async touchSession(id: string): Promise<void> {
+    const found = this.sessions.get(id);
+    if (found) this.sessions.set(id, { ...found, lastSeenAt: new Date().toISOString() });
+  }
+
+  async listSessions(userId: string): Promise<AuthSessionRecord[]> {
+    const now = Date.now();
+    return [...this.sessions.values()]
+      .filter((session) => session.userId === userId && session.revokedAt === null && new Date(session.expiresAt).getTime() > now)
+      .sort((left, right) => right.lastSeenAt.localeCompare(left.lastSeenAt))
+      .map((session) => structuredClone(session));
+  }
+
   async revokeSession(id: string): Promise<void> {
     const found = this.sessions.get(id);
     if (found) this.sessions.set(id, { ...found, revokedAt: new Date().toISOString() });
+  }
+
+  async revokeSessionForUser(userId: string, sessionId: string): Promise<boolean> {
+    const found = this.sessions.get(sessionId);
+    if (!found || found.userId !== userId || found.revokedAt !== null) return false;
+    this.sessions.set(sessionId, { ...found, revokedAt: new Date().toISOString() });
+    return true;
   }
 
   async revokeOtherSessions(userId: string, exceptSessionId: string): Promise<void> {
@@ -210,6 +269,30 @@ export class MemoryAuthRepository implements AuthRepository {
     for (const [id, session] of this.sessions) {
       if (session.userId === userId && id !== exceptSessionId && session.revokedAt === null) this.sessions.set(id, { ...session, revokedAt });
     }
+  }
+
+  async createPasswordReset(input: PasswordResetRecord): Promise<void> {
+    const consumedAt = new Date().toISOString();
+    for (const [hash, reset] of this.passwordResets) {
+      if (reset.userId === input.userId && reset.consumedAt === null) this.passwordResets.set(hash, { ...reset, consumedAt });
+      if (new Date(reset.expiresAt).getTime() < Date.now() - 7 * 86_400_000) this.passwordResets.delete(hash);
+    }
+    this.passwordResets.set(input.tokenHash, structuredClone(input));
+  }
+
+  async completePasswordReset(tokenHash: string, passwordHash: string, completedAt: string): Promise<boolean> {
+    const reset = this.passwordResets.get(tokenHash);
+    if (!reset || reset.consumedAt !== null || new Date(reset.expiresAt).getTime() <= Date.now()) return false;
+    const user = this.users.get(reset.userId);
+    if (!user || user.blockedAt !== null) return false;
+    this.users.set(user.id, { ...user, passwordHash, passwordResetRequired: false });
+    for (const [hash, item] of this.passwordResets) {
+      if (item.userId === user.id && item.consumedAt === null) this.passwordResets.set(hash, { ...item, consumedAt: completedAt });
+    }
+    for (const [id, session] of this.sessions) {
+      if (session.userId === user.id && session.revokedAt === null) this.sessions.set(id, { ...session, revokedAt: completedAt });
+    }
+    return true;
   }
 }
 
@@ -297,7 +380,8 @@ export class PostgresAuthRepository implements AuthRepository {
 
   async findSession(id: string): Promise<AuthSessionRecord | null> {
     const result = await this.pool.query<SessionRow>(`/* rooms:auth-find-session */
-      select id::text, user_id::text, refresh_token_hash, expires_at, revoked_at
+      select id::text, user_id::text, refresh_token_hash, user_agent, host(ip)::text as ip,
+        expires_at, revoked_at, created_at, last_seen_at
       from user_sessions
       where id = $1::uuid
       limit 1
@@ -308,18 +392,46 @@ export class PostgresAuthRepository implements AuthRepository {
   async consumeSession(id: string, refreshTokenHash: string): Promise<AuthSessionRecord | null> {
     const result = await this.pool.query<SessionRow>(`/* rooms:auth-consume-session */
       update user_sessions
-      set revoked_at = now()
+      set revoked_at = now(), last_seen_at = now()
       where id = $1::uuid
         and refresh_token_hash = $2
         and revoked_at is null
         and expires_at > now()
-      returning id::text, user_id::text, refresh_token_hash, expires_at, null::timestamptz as revoked_at
+      returning id::text, user_id::text, refresh_token_hash, user_agent, host(ip)::text as ip,
+        expires_at, null::timestamptz as revoked_at, created_at, last_seen_at
     `, [id, refreshTokenHash]);
     return result.rows[0] ? sessionFromRow(result.rows[0]) : null;
   }
 
+  async touchSession(id: string): Promise<void> {
+    await this.pool.query(`
+      update user_sessions set last_seen_at = now()
+      where id = $1::uuid and revoked_at is null and last_seen_at < now() - interval '5 minutes'
+    `, [id]);
+  }
+
+  async listSessions(userId: string): Promise<AuthSessionRecord[]> {
+    const result = await this.pool.query<SessionRow>(`/* rooms:auth-list-sessions */
+      select id::text, user_id::text, refresh_token_hash, user_agent, host(ip)::text as ip,
+        expires_at, revoked_at, created_at, last_seen_at
+      from user_sessions
+      where user_id = $1::uuid and revoked_at is null and expires_at > now()
+      order by last_seen_at desc, created_at desc
+    `, [userId]);
+    return result.rows.map(sessionFromRow);
+  }
+
   async revokeSession(id: string): Promise<void> {
     await this.pool.query("update user_sessions set revoked_at = coalesce(revoked_at, now()) where id = $1::uuid", [id]);
+  }
+
+  async revokeSessionForUser(userId: string, sessionId: string): Promise<boolean> {
+    const result = await this.pool.query(`
+      update user_sessions set revoked_at = coalesce(revoked_at, now())
+      where user_id = $1::uuid and id = $2::uuid and revoked_at is null
+      returning id
+    `, [userId, sessionId]);
+    return (result.rowCount ?? 0) > 0;
   }
 
   async revokeOtherSessions(userId: string, exceptSessionId: string): Promise<void> {
@@ -328,6 +440,76 @@ export class PostgresAuthRepository implements AuthRepository {
       set revoked_at = coalesce(revoked_at, now())
       where user_id = $1::uuid and id <> $2::uuid and revoked_at is null
     `, [userId, exceptSessionId]);
+  }
+
+  async createPasswordReset(input: PasswordResetRecord): Promise<void> {
+    const client = await this.pool.connect();
+    try {
+      await client.query("begin");
+      await client.query(`
+        update password_reset_tokens set consumed_at = coalesce(consumed_at, now())
+        where user_id = $1::uuid and consumed_at is null
+      `, [input.userId]);
+      await client.query(`/* rooms:auth-create-password-reset */
+        insert into password_reset_tokens (
+          id, user_id, token_hash, expires_at, requested_ip, requested_user_agent, created_at
+        ) values ($1::uuid, $2::uuid, $3, $4::timestamptz, $5::inet, $6, $7::timestamptz)
+      `, [input.id, input.userId, input.tokenHash, input.expiresAt, input.ip, input.userAgent, input.createdAt]);
+      await client.query("delete from password_reset_tokens where expires_at < now() - interval '7 days'");
+      await client.query("commit");
+    } catch (error) {
+      await client.query("rollback");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async completePasswordReset(tokenHash: string, passwordHash: string, completedAt: string): Promise<boolean> {
+    const client = await this.pool.connect();
+    try {
+      await client.query("begin");
+      const reset = await client.query<{ user_id: string }>(`/* rooms:auth-complete-password-reset */
+        update password_reset_tokens
+        set consumed_at = $2::timestamptz
+        where id = (
+          select id from password_reset_tokens
+          where token_hash = $1 and consumed_at is null and expires_at > $2::timestamptz
+          order by created_at desc limit 1 for update
+        )
+        returning user_id::text
+      `, [tokenHash, completedAt]);
+      const userId = reset.rows[0]?.user_id;
+      if (!userId) {
+        await client.query("rollback");
+        return false;
+      }
+      const updated = await client.query(`
+        update users
+        set password_hash = $2, password_reset_required = false, updated_at = $3::timestamptz
+        where id = $1::uuid and blocked_at is null
+        returning id
+      `, [userId, passwordHash, completedAt]);
+      if ((updated.rowCount ?? 0) === 0) {
+        await client.query("rollback");
+        return false;
+      }
+      await client.query(`
+        update password_reset_tokens set consumed_at = coalesce(consumed_at, $2::timestamptz)
+        where user_id = $1::uuid
+      `, [userId, completedAt]);
+      await client.query(`
+        update user_sessions set revoked_at = coalesce(revoked_at, $2::timestamptz)
+        where user_id = $1::uuid
+      `, [userId, completedAt]);
+      await client.query("commit");
+      return true;
+    } catch (error) {
+      await client.query("rollback");
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   private async insertConsent(client: PoolClient, userId: string, input: ClientRegistrationInput): Promise<void> {
@@ -353,6 +535,7 @@ interface PasswordParameters {
 const passwordParameters: PasswordParameters = { parallelism: 1, tagLength: 32, memory: 65_536, passes: 3 };
 const accessTokenLifetimeSeconds = 15 * 60;
 const refreshTokenLifetimeSeconds = 30 * 24 * 60 * 60;
+export const passwordResetLifetimeSeconds = 15 * 60;
 
 function derivePassword(password: string, salt: Buffer, parameters: PasswordParameters = passwordParameters): Promise<Buffer> {
   return new Promise((resolve, reject) => {
@@ -481,7 +664,54 @@ export class AuthService {
     if (!session || session.userId !== payload.sub || !this.sessionActive(session)) return null;
     const user = await this.repository.findUserById(payload.sub);
     if (!user || user.blockedAt !== null || user.role !== payload.role) return null;
+    await this.repository.touchSession(session.id);
     return { user: publicUser(user), sessionId: session.id };
+  }
+
+  async requestPasswordReset(login: string, ip: string | null, userAgent: string | null): Promise<string> {
+    const token = randomBytes(32).toString("base64url");
+    const user = await this.repository.findUserByLogin(login, normalizeRussianPhone(login));
+    if (user && user.blockedAt === null && user.passwordHash) {
+      const createdAt = new Date().toISOString();
+      await this.repository.createPasswordReset({
+        id: randomUUID(),
+        userId: user.id,
+        tokenHash: createHash("sha256").update(token).digest("hex"),
+        expiresAt: new Date(Date.now() + passwordResetLifetimeSeconds * 1000).toISOString(),
+        consumedAt: null,
+        ip,
+        userAgent,
+        createdAt,
+      });
+    }
+    return token;
+  }
+
+  async resetPassword(token: string, newPassword: string): Promise<boolean> {
+    const tokenHash = createHash("sha256").update(token).digest("hex");
+    const passwordHash = await hashPassword(newPassword);
+    return this.repository.completePasswordReset(tokenHash, passwordHash, new Date().toISOString());
+  }
+
+  async listSessions(userId: string, currentSessionId: string): Promise<PublicAuthSession[]> {
+    const sessions = await this.repository.listSessions(userId);
+    return sessions.map((session) => ({
+      id: session.id,
+      userAgent: session.userAgent,
+      ip: session.ip,
+      expiresAt: session.expiresAt,
+      createdAt: session.createdAt,
+      lastSeenAt: session.lastSeenAt,
+      current: session.id === currentSessionId,
+    }));
+  }
+
+  revokeUserSession(userId: string, sessionId: string): Promise<boolean> {
+    return this.repository.revokeSessionForUser(userId, sessionId);
+  }
+
+  revokeOtherUserSessions(userId: string, currentSessionId: string): Promise<void> {
+    return this.repository.revokeOtherSessions(userId, currentSessionId);
   }
 
   async updateClientProfile(userId: string, sessionId: string, input: ClientProfileChange): Promise<PublicUser | null> {
@@ -511,6 +741,7 @@ export class AuthService {
     const sessionId = randomUUID();
     const refreshToken = `${sessionId}.${randomBytes(32).toString("base64url")}`;
     const refreshTokenHash = createHash("sha256").update(refreshToken).digest("hex");
+    const createdAt = new Date().toISOString();
     const expiresAt = new Date(Date.now() + refreshTokenLifetimeSeconds * 1000).toISOString();
     await this.repository.createSession({
       id: sessionId,
@@ -520,6 +751,8 @@ export class AuthService {
       revokedAt: null,
       ip,
       userAgent,
+      createdAt,
+      lastSeenAt: createdAt,
     });
     return {
       user: publicUser(user),

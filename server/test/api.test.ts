@@ -12,7 +12,7 @@ import type { Room } from "../src/types.js";
 let app: FastifyInstance;
 
 before(async () => {
-  app = buildApp({ logger: false });
+  app = buildApp({ logger: false, exposePasswordResetToken: true });
   await app.ready();
 });
 
@@ -119,6 +119,102 @@ test("client auth keeps passwords private and revokes a logged-out session", asy
   assert.equal(expiredRefresh.statusCode, 401);
   const malformedRefresh = await app.inject({ method: "POST", url: "/v1/auth/refresh", headers: { cookie: "rooms_refresh=%E0%A4%A" } });
   assert.equal(malformedRefresh.statusCode, 401);
+});
+
+test("password recovery is one-time and clients can close sessions on other devices", async () => {
+  const registration = {
+    name: "Клиент безопасности",
+    email: "security.client@rooms.test",
+    phone: "+7 900 919-20-26",
+    city: "Воронеж",
+    password: "security-old-2026",
+    legal: { termsVersion: "test-1", privacyVersion: "test-1", acceptedAt: new Date().toISOString() },
+  };
+  const first = await app.inject({
+    method: "POST",
+    url: "/v1/auth/client/register",
+    headers: { "user-agent": "Rooms Test Desktop" },
+    payload: registration,
+  });
+  assert.equal(first.statusCode, 201);
+  const firstAccess = first.json().accessToken;
+
+  const second = await app.inject({
+    method: "POST",
+    url: "/v1/auth/login",
+    headers: { "user-agent": "Rooms Test Mobile" },
+    payload: { login: registration.email, password: registration.password },
+  });
+  assert.equal(second.statusCode, 200);
+  const secondAccess = second.json().accessToken;
+
+  const sessions = await app.inject({
+    method: "GET",
+    url: "/v1/me/sessions",
+    headers: { authorization: `Bearer ${firstAccess}` },
+  });
+  assert.equal(sessions.statusCode, 200);
+  assert.equal(sessions.json().items.length, 2);
+  assert.equal(sessions.json().items.filter((item: { current: boolean }) => item.current).length, 1);
+  assert.ok(sessions.json().items.some((item: { userAgent: string }) => item.userAgent === "Rooms Test Mobile"));
+
+  const revokeOthers = await app.inject({
+    method: "DELETE",
+    url: "/v1/me/sessions/others",
+    headers: { authorization: `Bearer ${firstAccess}` },
+  });
+  assert.equal(revokeOthers.statusCode, 204);
+  const revokedSecond = await app.inject({ method: "GET", url: "/v1/me", headers: { authorization: `Bearer ${secondAccess}` } });
+  assert.equal(revokedSecond.statusCode, 401);
+
+  const unknownRequest = await app.inject({
+    method: "POST",
+    url: "/v1/auth/password-reset/request",
+    payload: { login: "missing.account@rooms.test" },
+  });
+  assert.equal(unknownRequest.statusCode, 202);
+  assert.equal(unknownRequest.json().accepted, true);
+  assert.ok(unknownRequest.json().demoToken);
+
+  const resetRequest = await app.inject({
+    method: "POST",
+    url: "/v1/auth/password-reset/request",
+    payload: { login: registration.email },
+  });
+  assert.equal(resetRequest.statusCode, 202);
+  assert.equal(resetRequest.json().message, unknownRequest.json().message);
+  const resetToken = resetRequest.json().demoToken;
+  assert.ok(resetToken);
+
+  const reset = await app.inject({
+    method: "POST",
+    url: "/v1/auth/password-reset/confirm",
+    payload: { token: resetToken, newPassword: "security-new-2026" },
+  });
+  assert.equal(reset.statusCode, 204);
+  const revokedFirst = await app.inject({ method: "GET", url: "/v1/me", headers: { authorization: `Bearer ${firstAccess}` } });
+  assert.equal(revokedFirst.statusCode, 401);
+
+  const oldPassword = await app.inject({
+    method: "POST",
+    url: "/v1/auth/login",
+    payload: { login: registration.email, password: registration.password },
+  });
+  assert.equal(oldPassword.statusCode, 401);
+  const newPassword = await app.inject({
+    method: "POST",
+    url: "/v1/auth/login",
+    payload: { login: registration.email, password: "security-new-2026" },
+  });
+  assert.equal(newPassword.statusCode, 200);
+
+  const replay = await app.inject({
+    method: "POST",
+    url: "/v1/auth/password-reset/confirm",
+    payload: { token: resetToken, newPassword: "security-replayed-2026" },
+  });
+  assert.equal(replay.statusCode, 400);
+  assert.equal(replay.json().code, "PASSWORD_RESET_INVALID");
 });
 
 test("client profile and bookings use authenticated server data and server prices", async () => {

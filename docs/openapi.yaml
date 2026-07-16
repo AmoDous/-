@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Rooms API
-  version: 0.4.0
+  version: 0.5.0
   description: |
     Contract for the Rooms MVP backend. GitHub Pages remains a static frontend;
     the local Fastify service provides PostgreSQL-backed API endpoints.
@@ -193,6 +193,50 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /v1/auth/password-reset/request:
+    post:
+      tags: [Auth]
+      operationId: requestPasswordReset
+      description: Always returns the same accepted response so an account cannot be discovered by login enumeration.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [login]
+              properties:
+                login: {type: string, minLength: 3, maxLength: 254}
+      responses:
+        '202':
+          description: Reset delivery accepted regardless of whether the account exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PasswordResetAccepted'
+        '429':
+          $ref: '#/components/responses/ValidationError'
+
+  /v1/auth/password-reset/confirm:
+    post:
+      tags: [Auth]
+      operationId: confirmPasswordReset
+      description: Consumes a one-time reset token, changes the password and revokes every existing session.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, newPassword]
+              properties:
+                token: {type: string, minLength: 32, maxLength: 200}
+                newPassword: {type: string, minLength: 8, maxLength: 128}
+      responses:
+        '204': {description: Password changed and existing sessions revoked}
+        '400':
+          $ref: '#/components/responses/ValidationError'
+
   /v1/auth/refresh:
     post:
       tags: [Auth]
@@ -257,6 +301,56 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '409':
           $ref: '#/components/responses/Conflict'
+
+  /v1/me/sessions:
+    get:
+      tags: [Client]
+      operationId: listCurrentUserSessions
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Active sessions owned by the current user
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: {$ref: '#/components/schemas/UserSession'}
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/me/sessions/others:
+    delete:
+      tags: [Client]
+      operationId: revokeOtherCurrentUserSessions
+      security:
+        - bearerAuth: []
+      responses:
+        '204': {description: Every active session except the current one was revoked}
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/me/sessions/{sessionId}:
+    delete:
+      tags: [Client]
+      operationId: revokeCurrentUserSession
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      responses:
+        '204': {description: Owned session revoked}
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
 
   /v1/me/notification-settings:
     get:
@@ -1164,6 +1258,33 @@ components:
         user: {$ref: '#/components/schemas/User'}
         accessToken: {type: string}
         expiresIn: {type: integer, description: Seconds}
+
+    PasswordResetAccepted:
+      type: object
+      required: [accepted, expiresIn, message]
+      properties:
+        accepted: {type: boolean, const: true}
+        expiresIn: {type: integer, const: 900}
+        message: {type: string}
+        demoToken:
+          type: string
+          description: Present only when EXPOSE_PASSWORD_RESET_TOKEN is explicitly enabled outside production.
+        demoResetUrl:
+          type: string
+          format: uri
+          description: Local demonstration link; a production delivery provider must send the link instead.
+
+    UserSession:
+      type: object
+      required: [id, expiresAt, createdAt, lastSeenAt, current]
+      properties:
+        id: {type: string, format: uuid}
+        userAgent: {type: [string, 'null']}
+        ip: {type: [string, 'null']}
+        expiresAt: {type: string, format: date-time}
+        createdAt: {type: string, format: date-time}
+        lastSeenAt: {type: string, format: date-time}
+        current: {type: boolean}
 
     ClientRegistration:
       type: object

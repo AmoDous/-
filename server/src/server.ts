@@ -10,6 +10,9 @@ const secureCookies = String(process.env.AUTH_COOKIE_SECURE || "false").trim().t
 const enableDemoPayments = process.env.ENABLE_DEMO_PAYMENTS === undefined
   ? process.env.NODE_ENV !== "production"
   : String(process.env.ENABLE_DEMO_PAYMENTS).trim().toLowerCase() === "true";
+const exposePasswordResetToken = process.env.EXPOSE_PASSWORD_RESET_TOKEN === undefined
+  ? process.env.NODE_ENV !== "production"
+  : String(process.env.EXPOSE_PASSWORD_RESET_TOKEN).trim().toLowerCase() === "true";
 const corsOrigins = String(process.env.CORS_ORIGINS || "http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001,http://localhost:4173,http://127.0.0.1:4173,https://amodous.github.io")
   .split(",")
   .map((origin) => origin.trim())
@@ -36,6 +39,7 @@ const app = buildApp({
   authTokenSecret: authTokenSecret || "rooms-local-development-secret-change-me-2026",
   secureCookies,
   enableDemoPayments,
+  exposePasswordResetToken,
 });
 app.addHook("onClose", () => storage.close());
 

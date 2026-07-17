@@ -11,6 +11,7 @@ const migrations = [
   { name: "0003_partner_catalog", url: new URL("../../docs/migrations/0003_partner_catalog.sql", import.meta.url) },
   { name: "0004_auth_security", url: new URL("../../docs/migrations/0004_auth_security.sql", import.meta.url) },
   { name: "0005_notification_worker", url: new URL("../../docs/migrations/0005_notification_worker.sql", import.meta.url) },
+  { name: "0006_partner_photos", url: new URL("../../docs/migrations/0006_partner_photos.sql", import.meta.url) },
 ];
 const pool = new Pool({ ...postgresPoolConfig(), max: 1, application_name: "rooms-migrate" });
 const client = await pool.connect();

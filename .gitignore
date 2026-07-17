@@ -9,3 +9,5 @@ server/node_modules/
 server/dist/
 server/coverage/
 server/.env
+server/server-data/
+server-data/

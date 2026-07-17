@@ -27,6 +27,32 @@ export interface PartnerModerationChange {
 }
 
 export type ModerationStatus = "pending" | "approved" | "rejected";
+export type PartnerPhotoStatus = "review" | "published" | "hidden";
+
+export interface PartnerPhotoRecord {
+  id: string;
+  originalUrl: string;
+  landscapeUrl: string;
+  portraitUrl: string;
+  width: number;
+  height: number;
+  sortOrder: number;
+  isCover: boolean;
+  status: PartnerPhotoStatus;
+  createdAt: string;
+}
+
+export interface PartnerPhotoWrite {
+  storageKey: string;
+  originalUrl: string;
+  landscapeUrl: string;
+  portraitUrl: string;
+  originalName: string;
+  mimeType: string;
+  fileSizeBytes: number;
+  width: number;
+  height: number;
+}
 
 export interface AdminModerationRecord extends PartnerModerationChange {
   targetType: "venue" | "room";
@@ -56,10 +82,13 @@ export interface PartnerVenueRecord extends Venue {
   contactEmail: string;
   weekSchedule: PartnerWeekScheduleDay[];
   scheduleExceptions: PartnerScheduleException[];
+  photoPaths: string[];
+  photos: PartnerPhotoRecord[];
   pendingChange: PartnerModerationChange | null;
 }
 
 export interface PartnerRoomRecord extends Room {
+  photos: PartnerPhotoRecord[];
   pendingChange: PartnerModerationChange | null;
 }
 
@@ -119,6 +148,13 @@ export interface PartnerCatalogRepository {
   listRooms(venueId: string): Promise<PartnerRoomRecord[]>;
   createRoom(venueId: string, actorId: string, input: PartnerRoomWrite): Promise<PartnerRoomRecord>;
   updateRoom(venueId: string, roomId: string, actorId: string, input: PartnerRoomWrite): Promise<PartnerRoomRecord | null>;
+  addPhoto(
+    venueId: string,
+    roomId: string | null,
+    actorId: string,
+    input: PartnerPhotoWrite,
+  ): Promise<PartnerPhotoRecord | null>;
+  removePhoto(venueId: string, photoId: string, actorId: string): Promise<boolean>;
   setScheduleException(
     venueId: string,
     actorId: string,
@@ -204,8 +240,19 @@ interface ExceptionRow extends QueryResultRow {
 }
 
 interface PhotoRow extends QueryResultRow {
-  room_id: string;
-  url: string;
+  id: string;
+  room_id: string | null;
+  venue_id: string | null;
+  original_url: string;
+  landscape_url: string | null;
+  portrait_url: string | null;
+  width: number | null;
+  height: number | null;
+  sort_order: number;
+  is_cover: boolean;
+  status: PartnerPhotoStatus;
+  created_at: Date | string;
+  storage_key?: string | null;
 }
 
 interface ServiceRow extends QueryResultRow {
@@ -251,6 +298,13 @@ interface MemoryModerationRecord {
   reviewComment: string | null;
   reviewedById: string | null;
   reviewedAt: string | null;
+}
+
+interface MemoryPhotoRecord {
+  venueId: string;
+  roomId: string | null;
+  storageKey: string | null;
+  photo: PartnerPhotoRecord;
 }
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
@@ -418,6 +472,52 @@ function servicesValue(value: unknown): RoomService[] {
   }).filter((service) => service.name));
 }
 
+function photoFromRow(row: PhotoRow): PartnerPhotoRecord {
+  return {
+    id: row.id,
+    originalUrl: row.original_url,
+    landscapeUrl: row.landscape_url ?? row.original_url,
+    portraitUrl: row.portrait_url ?? row.original_url,
+    width: numeric(row.width),
+    height: numeric(row.height),
+    sortOrder: row.sort_order,
+    isCover: row.is_cover,
+    status: row.status,
+    createdAt: isoDateTime(row.created_at),
+  };
+}
+
+function photoSnapshot(photos: PartnerPhotoRecord[]): PartnerPhotoRecord[] {
+  return photos.map((photo) => ({ ...photo }));
+}
+
+function photosValue(value: unknown): PartnerPhotoRecord[] | null {
+  if (!Array.isArray(value)) return null;
+  return value.flatMap((item) => {
+    if (!item || typeof item !== "object") return [];
+    const photo = item as Record<string, unknown>;
+    if (typeof photo.id !== "string" || typeof photo.originalUrl !== "string") return [];
+    return [{
+      id: photo.id,
+      originalUrl: photo.originalUrl,
+      landscapeUrl: typeof photo.landscapeUrl === "string" ? photo.landscapeUrl : photo.originalUrl,
+      portraitUrl: typeof photo.portraitUrl === "string" ? photo.portraitUrl : photo.originalUrl,
+      width: numberValue(photo.width),
+      height: numberValue(photo.height),
+      sortOrder: numberValue(photo.sortOrder),
+      isCover: photo.isCover === true,
+      status: photo.status === "hidden" ? "hidden" as const : photo.status === "published" ? "published" as const : "review" as const,
+      createdAt: typeof photo.createdAt === "string" ? photo.createdAt : new Date().toISOString(),
+    }];
+  });
+}
+
+function partnerVisiblePhotos(photos: PartnerPhotoRecord[], change: PartnerModerationChange | null): PartnerPhotoRecord[] {
+  const proposed = photosValue(change?.proposedData.photos);
+  if (proposed) return proposed;
+  return photos.filter((photo) => photo.status === "published");
+}
+
 function defaultWeekSchedule(opensAtHour = 10, closesAtHour = 24): PartnerWeekScheduleDay[] {
   return Array.from({ length: 7 }, (_, index) => ({
     weekday: index + 1,
@@ -437,6 +537,33 @@ export class MemoryPartnerCatalogRepository implements PartnerCatalogRepository 
   private readonly venueModeration = new Map<string, PartnerModerationChange>();
   private readonly roomModeration = new Map<string, PartnerModerationChange>();
   private readonly moderationRecords = new Map<string, MemoryModerationRecord>();
+  private readonly photoRecords = new Map<string, MemoryPhotoRecord>(demoRooms.flatMap((room) => room.photoPaths.map((path, index) => {
+    const id = randomUUID();
+    return [id, {
+      venueId: room.venueId,
+      roomId: room.id,
+      storageKey: null,
+      photo: {
+        id,
+        originalUrl: path,
+        landscapeUrl: path,
+        portraitUrl: path,
+        width: 0,
+        height: 0,
+        sortOrder: index,
+        isCover: index === 0,
+        status: "published" as const,
+        createdAt: new Date(0).toISOString(),
+      },
+    } satisfies MemoryPhotoRecord] as const;
+  })));
+
+  private memoryTargetPhotos(venueId: string, roomId: string | null): PartnerPhotoRecord[] {
+    return [...this.photoRecords.values()]
+      .filter((item) => item.venueId === venueId && item.roomId === roomId && item.photo.status !== "hidden")
+      .map((item) => structuredClone(item.photo))
+      .sort((left, right) => Number(right.isCover) - Number(left.isCover) || left.sortOrder - right.sortOrder);
+  }
 
   private queueMemoryModeration(
     targetType: "venue" | "room",
@@ -448,7 +575,7 @@ export class MemoryPartnerCatalogRepository implements PartnerCatalogRepository 
   ): PartnerModerationChange | null {
     const target = targetType === "venue" ? this.venueModeration : this.roomModeration;
     const current = target.get(targetId);
-    const original = current?.beforeData ?? structuredClone(beforeData);
+    const original = current ? { ...structuredClone(beforeData), ...structuredClone(current.beforeData) } : structuredClone(beforeData);
     const proposed = { ...(current?.proposedData ?? {}), ...structuredClone(proposedData) };
     const fields = changedFields(original, proposed);
     if (!fields.length) {
@@ -503,6 +630,8 @@ export class MemoryPartnerCatalogRepository implements PartnerCatalogRepository 
     const venue = this.venues.get(venueId);
     if (!venue) return null;
     const contact = this.contacts.get(venueId) ?? { venueType: "", name: "", phone: "", email: "" };
+    const pendingChange = structuredClone(this.venueModeration.get(venueId) ?? null);
+    const photos = partnerVisiblePhotos(this.memoryTargetPhotos(venueId, null), pendingChange);
     return {
       ...structuredClone(venue),
       venueType: contact.venueType,
@@ -511,7 +640,9 @@ export class MemoryPartnerCatalogRepository implements PartnerCatalogRepository 
       contactEmail: contact.email,
       weekSchedule: structuredClone(this.schedules.get(venueId) ?? defaultWeekSchedule()),
       scheduleExceptions: structuredClone(this.exceptions.get(venueId) ?? []),
-      pendingChange: structuredClone(this.venueModeration.get(venueId) ?? null),
+      photoPaths: photos.map((photo) => photo.landscapeUrl),
+      photos,
+      pendingChange,
     };
   }
 
@@ -538,10 +669,16 @@ export class MemoryPartnerCatalogRepository implements PartnerCatalogRepository 
   }
 
   async listRooms(venueId: string): Promise<PartnerRoomRecord[]> {
-    return [...this.rooms.values()].filter((room) => room.venueId === venueId).map((room) => ({
-      ...structuredClone(room),
-      pendingChange: structuredClone(this.roomModeration.get(room.id) ?? null),
-    }));
+    return [...this.rooms.values()].filter((room) => room.venueId === venueId).map((room) => {
+      const pendingChange = structuredClone(this.roomModeration.get(room.id) ?? null);
+      const photos = partnerVisiblePhotos(this.memoryTargetPhotos(venueId, room.id), pendingChange);
+      return {
+        ...structuredClone(room),
+        photoPaths: photos.map((photo) => photo.landscapeUrl),
+        photos,
+        pendingChange,
+      };
+    });
   }
 
   async createRoom(venueId: string, actorId: string, input: PartnerRoomWrite): Promise<PartnerRoomRecord> {
@@ -577,7 +714,7 @@ export class MemoryPartnerCatalogRepository implements PartnerCatalogRepository 
     this.rooms.set(id, room);
     const proposed = { ...roomProposal(input, services), publicationRequested: true };
     this.queueMemoryModeration("room", id, venueId, actorId, {}, proposed);
-    return { ...structuredClone(room), pendingChange: structuredClone(this.roomModeration.get(id) ?? null) };
+    return { ...structuredClone(room), photos: [], pendingChange: structuredClone(this.roomModeration.get(id) ?? null) };
   }
 
   async updateRoom(venueId: string, roomId: string, actorId: string, input: PartnerRoomWrite): Promise<PartnerRoomRecord | null> {
@@ -619,7 +756,68 @@ export class MemoryPartnerCatalogRepository implements PartnerCatalogRepository 
       if (current) this.moderationRecords.delete(current.id);
       this.roomModeration.delete(roomId);
     }
-    return { ...structuredClone(next), pendingChange: structuredClone(this.roomModeration.get(roomId) ?? null) };
+    const pendingChange = structuredClone(this.roomModeration.get(roomId) ?? null);
+    const photos = partnerVisiblePhotos(this.memoryTargetPhotos(venueId, roomId), pendingChange);
+    return { ...structuredClone(next), photoPaths: photos.map((photo) => photo.landscapeUrl), photos, pendingChange };
+  }
+
+  async addPhoto(
+    venueId: string,
+    roomId: string | null,
+    actorId: string,
+    input: PartnerPhotoWrite,
+  ): Promise<PartnerPhotoRecord | null> {
+    if (!this.venues.has(venueId)) return null;
+    if (roomId && this.rooms.get(roomId)?.venueId !== venueId) return null;
+    const currentChange = roomId ? this.roomModeration.get(roomId) ?? null : this.venueModeration.get(venueId) ?? null;
+    const all = this.memoryTargetPhotos(venueId, roomId);
+    const visible = partnerVisiblePhotos(all, currentChange);
+    if (roomId && visible.length >= 10) {
+      throw new PartnerCatalogError("PHOTO_LIMIT_REACHED", "Для одного помещения можно загрузить до 10 фотографий.");
+    }
+    const id = randomUUID();
+    const photo: PartnerPhotoRecord = {
+      id,
+      originalUrl: input.originalUrl,
+      landscapeUrl: input.landscapeUrl,
+      portraitUrl: input.portraitUrl,
+      width: input.width,
+      height: input.height,
+      sortOrder: roomId ? visible.length : 0,
+      isCover: !roomId || visible.length === 0,
+      status: "review",
+      createdAt: new Date().toISOString(),
+    };
+    this.photoRecords.set(id, { venueId, roomId, storageKey: input.storageKey, photo });
+    const before = all.filter((item) => item.status === "published");
+    const proposed = roomId ? [...visible, photo] : [photo];
+    this.queueMemoryModeration(
+      roomId ? "room" : "venue",
+      roomId ?? venueId,
+      venueId,
+      actorId,
+      { photos: photoSnapshot(before) },
+      { photos: photoSnapshot(proposed) },
+    );
+    return structuredClone(photo);
+  }
+
+  async removePhoto(venueId: string, photoId: string, actorId: string): Promise<boolean> {
+    const stored = this.photoRecords.get(photoId);
+    if (!stored || stored.venueId !== venueId) return false;
+    const currentChange = stored.roomId ? this.roomModeration.get(stored.roomId) ?? null : this.venueModeration.get(venueId) ?? null;
+    const all = this.memoryTargetPhotos(venueId, stored.roomId);
+    const visible = partnerVisiblePhotos(all, currentChange);
+    const proposed = visible.filter((photo) => photo.id !== photoId);
+    this.queueMemoryModeration(
+      stored.roomId ? "room" : "venue",
+      stored.roomId ?? venueId,
+      venueId,
+      actorId,
+      { photos: photoSnapshot(all.filter((photo) => photo.status === "published")) },
+      { photos: photoSnapshot(proposed) },
+    );
+    return true;
   }
 
   async setScheduleException(
@@ -668,19 +866,22 @@ export class MemoryPartnerCatalogRepository implements PartnerCatalogRepository 
       if (!venue) return null;
       if (decision === "approved") {
         const data = item.change.proposedData;
-        this.venues.set(item.targetId, {
-          ...venue,
-          title: textValue(data.title),
-          city: textValue(data.city),
-          address: textValue(data.address),
-          description: textValue(data.description),
-          rules: textValue(data.rules),
-          amenities: stringArray(data.amenities),
-          paymentMethods: paymentMethodsValue(data.paymentMethods),
-        });
-        const contact = this.contacts.get(item.targetId) ?? { venueType: "", name: "", phone: "", email: "" };
-        this.contacts.set(item.targetId, { ...contact, venueType: textValue(data.venueType) });
+        if (typeof data.title === "string") {
+          this.venues.set(item.targetId, {
+            ...venue,
+            title: textValue(data.title),
+            city: textValue(data.city),
+            address: textValue(data.address),
+            description: textValue(data.description),
+            rules: textValue(data.rules),
+            amenities: stringArray(data.amenities),
+            paymentMethods: paymentMethodsValue(data.paymentMethods),
+          });
+          const contact = this.contacts.get(item.targetId) ?? { venueType: "", name: "", phone: "", email: "" };
+          this.contacts.set(item.targetId, { ...contact, venueType: textValue(data.venueType) });
+        }
       }
+      this.applyMemoryPhotoSnapshot(item.targetId, null, decision === "approved" ? item.change.proposedData : item.change.beforeData);
       this.venueModeration.delete(item.targetId);
     } else {
       const room = this.rooms.get(item.targetId);
@@ -709,6 +910,7 @@ export class MemoryPartnerCatalogRepository implements PartnerCatalogRepository 
           ? { publicationStatus: decision === "approved" ? "published" as const : room.publicationStatus === "published" ? "published" as const : "hidden" as const }
           : {}),
       });
+      this.applyMemoryPhotoSnapshot(item.venueId, item.targetId, data);
       this.roomModeration.delete(item.targetId);
     }
     const decided: MemoryModerationRecord = {
@@ -721,6 +923,20 @@ export class MemoryPartnerCatalogRepository implements PartnerCatalogRepository 
     this.moderationRecords.set(moderationId, decided);
     return this.memoryAdminRecord(decided);
   }
+
+  private applyMemoryPhotoSnapshot(venueId: string, roomId: string | null, data: Record<string, unknown>): void {
+    const photos = photosValue(data.photos);
+    if (!photos) return;
+    const selected = new Set(photos.map((photo) => photo.id));
+    for (const [id, stored] of this.photoRecords) {
+      if (stored.venueId !== venueId || stored.roomId !== roomId) continue;
+      stored.photo.status = selected.has(id) ? "published" : "hidden";
+      if (selected.has(id)) {
+        const snapshot = photos.find((photo) => photo.id === id);
+        if (snapshot) stored.photo = { ...stored.photo, sortOrder: snapshot.sortOrder, isCover: snapshot.isCover, status: "published" };
+      }
+    }
+  }
 }
 
 export class PostgresPartnerCatalogRepository implements PartnerCatalogRepository {
@@ -729,7 +945,7 @@ export class PostgresPartnerCatalogRepository implements PartnerCatalogRepositor
   constructor(private readonly pool: Pool) {}
 
   async getVenue(venueId: string): Promise<PartnerVenueRecord | null> {
-    const [venueResult, scheduleResult, exceptionsResult, moderationResult] = await Promise.all([
+    const [venueResult, scheduleResult, exceptionsResult, moderationResult, photosResult] = await Promise.all([
       this.pool.query<VenueDetailsRow>(`/* rooms:partner-catalog-venue */
         select v.id::text, v.slug, v.title, v.city, v.address, v.venue_type, v.description, v.rules,
           v.contact_name, v.contact_phone, v.contact_email::text, v.amenities, v.payment_methods,
@@ -749,6 +965,14 @@ export class PostgresPartnerCatalogRepository implements PartnerCatalogRepositor
         from moderation_requests where venue_id = $1::uuid and status = 'pending'
         order by created_at desc limit 1
       `, [venueId]),
+      this.pool.query<PhotoRow>(`/* rooms:partner-venue-photos */
+        select p.id::text, p.room_id::text, p.venue_id::text, p.original_url, p.landscape_url,
+          p.portrait_url, p.width, p.height, p.sort_order, p.is_cover, p.status::text, p.created_at,
+          p.storage_key::text
+        from room_photos p
+        where p.venue_id = $1::uuid and p.status <> 'hidden'
+        order by p.is_cover desc, p.sort_order, p.created_at
+      `, [venueId]),
     ]);
     const row = venueResult.rows[0];
     if (!row) return null;
@@ -758,6 +982,8 @@ export class PostgresPartnerCatalogRepository implements PartnerCatalogRepositor
       opensAtHour: clockHour(day.opens_at),
       closesAtHour: clockHour(day.closes_at, day.closes_next_day),
     })) : defaultWeekSchedule();
+    const pendingChange = moderationFromRow(moderationResult.rows[0]);
+    const photos = partnerVisiblePhotos(photosResult.rows.map(photoFromRow), pendingChange);
     return {
       id: row.id,
       slug: row.slug,
@@ -782,7 +1008,9 @@ export class PostgresPartnerCatalogRepository implements PartnerCatalogRepositor
         closesAtHour: item.mode === "custom" ? clockHour(item.closes_at, item.closes_next_day) : null,
         note: item.note ?? "",
       })),
-      pendingChange: moderationFromRow(moderationResult.rows[0]),
+      photoPaths: photos.map((photo) => photo.landscapeUrl),
+      photos,
+      pendingChange,
     };
   }
 
@@ -833,8 +1061,10 @@ export class PostgresPartnerCatalogRepository implements PartnerCatalogRepositor
     const roomIds = roomResult.rows.map((row) => row.id);
     const [photosResult, servicesResult, moderationResult] = await Promise.all([
       this.pool.query<PhotoRow>(`/* rooms:partner-room-photos */
-        select p.room_id::text, coalesce(p.landscape_url, p.original_url) as url
-        from room_photos p where p.room_id = any($1::uuid[])
+        select p.id::text, p.room_id::text, p.venue_id::text, p.original_url, p.landscape_url,
+          p.portrait_url, p.width, p.height, p.sort_order, p.is_cover, p.status::text, p.created_at,
+          p.storage_key::text
+        from room_photos p where p.room_id = any($1::uuid[]) and p.status <> 'hidden'
         order by p.room_id, p.is_cover desc, p.sort_order, p.created_at
       `, [roomIds]),
       this.pool.query<ServiceRow>(`/* rooms:partner-room-services */
@@ -848,20 +1078,21 @@ export class PostgresPartnerCatalogRepository implements PartnerCatalogRepositor
         order by m.created_at desc
       `, [roomIds]),
     ]);
-    const photos = new Map<string, string[]>();
-    for (const photo of photosResult.rows) photos.set(photo.room_id, [...(photos.get(photo.room_id) ?? []), photo.url]);
+    const photos = new Map<string, PartnerPhotoRecord[]>();
+    for (const photo of photosResult.rows) {
+      if (photo.room_id) photos.set(photo.room_id, [...(photos.get(photo.room_id) ?? []), photoFromRow(photo)]);
+    }
     const services = new Map<string, RoomService[]>();
     for (const service of servicesResult.rows) services.set(service.room_id, [...(services.get(service.room_id) ?? []), {
       id: service.id, name: service.name, description: service.description, price: numeric(service.price),
     }]);
     const moderation = new Map<string, ModerationRow>();
     for (const item of moderationResult.rows) if (item.room_id && !moderation.has(item.room_id)) moderation.set(item.room_id, item);
-    return roomResult.rows.map((row) => this.roomFromRow(
-      row,
-      photos.get(row.id) ?? [],
-      services.get(row.id) ?? [],
-      moderationFromRow(moderation.get(row.id)),
-    ));
+    return roomResult.rows.map((row) => {
+      const pendingChange = moderationFromRow(moderation.get(row.id));
+      const visiblePhotos = partnerVisiblePhotos(photos.get(row.id) ?? [], pendingChange);
+      return this.roomFromRow(row, visiblePhotos, services.get(row.id) ?? [], pendingChange);
+    });
   }
 
   async createRoom(venueId: string, actorId: string, input: PartnerRoomWrite): Promise<PartnerRoomRecord> {
@@ -967,6 +1198,143 @@ export class PostgresPartnerCatalogRepository implements PartnerCatalogRepositor
       client.release();
     }
     return (await this.listRooms(venueId)).find((item) => item.id === roomId) ?? null;
+  }
+
+  async addPhoto(
+    venueId: string,
+    roomId: string | null,
+    actorId: string,
+    input: PartnerPhotoWrite,
+  ): Promise<PartnerPhotoRecord | null> {
+    const client = await this.pool.connect();
+    try {
+      await client.query("begin");
+      if (roomId) {
+        const room = await client.query<{ exists: boolean }>(
+          "select exists(select 1 from rooms where id = $1::uuid and venue_id = $2::uuid) as exists",
+          [roomId, venueId],
+        );
+        if (!room.rows[0]?.exists) {
+          await client.query("rollback");
+          return null;
+        }
+      } else {
+        const venue = await client.query<{ exists: boolean }>("select exists(select 1 from venues where id = $1::uuid) as exists", [venueId]);
+        if (!venue.rows[0]?.exists) {
+          await client.query("rollback");
+          return null;
+        }
+      }
+      const targetColumn = roomId ? "room_id" : "venue_id";
+      const targetId = roomId ?? venueId;
+      await client.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [`${targetColumn}:${targetId}`]);
+      const [photosResult, moderationResult] = await Promise.all([
+        client.query<PhotoRow>(`select p.id::text, p.room_id::text, p.venue_id::text, p.original_url,
+          p.landscape_url, p.portrait_url, p.width, p.height, p.sort_order, p.is_cover,
+          p.status::text, p.created_at, p.storage_key::text
+          from room_photos p where p.${targetColumn} = $1::uuid and p.status <> 'hidden'
+          order by p.is_cover desc, p.sort_order, p.created_at`, [targetId]),
+        client.query<ModerationRow>(`select id::text, room_id::text, fields, before_data, proposed_data, created_at
+          from moderation_requests where ${targetColumn} = $1::uuid and status = 'pending'
+          order by created_at desc limit 1`, [targetId]),
+      ]);
+      const current = photosResult.rows.map(photoFromRow);
+      const visible = partnerVisiblePhotos(current, moderationFromRow(moderationResult.rows[0]));
+      if (roomId && visible.length >= 10) {
+        throw new PartnerCatalogError("PHOTO_LIMIT_REACHED", "Для одного помещения можно загрузить до 10 фотографий.");
+      }
+      const id = randomUUID();
+      const inserted = await client.query<PhotoRow>(`/* rooms:add-partner-photo */
+        insert into room_photos (
+          id, room_id, venue_id, original_url, landscape_url, portrait_url, width, height,
+          sort_order, is_cover, status, storage_key, original_name, mime_type, file_size_bytes, created_by
+        ) values (
+          $1::uuid,$2::uuid,$3::uuid,$4,$5,$6,$7,$8,$9,$10,'review',$11::uuid,$12,$13,$14,$15::uuid
+        ) returning id::text, room_id::text, venue_id::text, original_url, landscape_url,
+          portrait_url, width, height, sort_order, is_cover, status::text, created_at, storage_key::text
+      `, [
+        id, roomId, roomId ? null : venueId, input.originalUrl, input.landscapeUrl, input.portraitUrl,
+        input.width, input.height, roomId ? visible.length : 0, !roomId || visible.length === 0,
+        input.storageKey, input.originalName.slice(0, 255), input.mimeType, input.fileSizeBytes, actorId,
+      ]);
+      const insertedRow = inserted.rows[0];
+      if (!insertedRow) throw new Error("Uploaded photo could not be loaded after insert.");
+      const photo = photoFromRow(insertedRow);
+      const before = current.filter((item) => item.status === "published");
+      const proposed = roomId ? [...visible, photo] : [photo];
+      await this.upsertModeration(
+        client,
+        { venueId: roomId ? null : venueId, roomId },
+        actorId,
+        { photos: photoSnapshot(before) },
+        { photos: photoSnapshot(proposed) },
+      );
+      await this.audit(client, actorId, "partner_photo_uploaded", "room_photo", id, {}, {
+        roomId, venueId, width: input.width, height: input.height, originalName: input.originalName,
+      });
+      await client.query("commit");
+      return photo;
+    } catch (error) {
+      await client.query("rollback");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async removePhoto(venueId: string, photoId: string, actorId: string): Promise<boolean> {
+    const client = await this.pool.connect();
+    try {
+      await client.query("begin");
+      const ownerResult = await client.query<PhotoRow & { owner_venue_id: string }>(`/* rooms:lock-partner-photo */
+        select p.id::text, p.room_id::text, p.venue_id::text, p.original_url, p.landscape_url,
+          p.portrait_url, p.width, p.height, p.sort_order, p.is_cover, p.status::text, p.created_at,
+          p.storage_key::text, coalesce(p.venue_id, room.venue_id)::text as owner_venue_id
+        from room_photos p left join rooms room on room.id = p.room_id
+        where p.id = $1::uuid and coalesce(p.venue_id, room.venue_id) = $2::uuid and p.status <> 'hidden'
+        for update of p
+      `, [photoId, venueId]);
+      const owner = ownerResult.rows[0];
+      if (!owner) {
+        await client.query("rollback");
+        return false;
+      }
+      const targetColumn = owner.room_id ? "room_id" : "venue_id";
+      const targetId = owner.room_id ?? venueId;
+      await client.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [`${targetColumn}:${targetId}`]);
+      const [photosResult, moderationResult] = await Promise.all([
+        client.query<PhotoRow>(`select p.id::text, p.room_id::text, p.venue_id::text, p.original_url,
+          p.landscape_url, p.portrait_url, p.width, p.height, p.sort_order, p.is_cover,
+          p.status::text, p.created_at, p.storage_key::text
+          from room_photos p where p.${targetColumn} = $1::uuid and p.status <> 'hidden'
+          order by p.is_cover desc, p.sort_order, p.created_at`, [targetId]),
+        client.query<ModerationRow>(`select id::text, room_id::text, fields, before_data, proposed_data, created_at
+          from moderation_requests where ${targetColumn} = $1::uuid and status = 'pending'
+          order by created_at desc limit 1`, [targetId]),
+      ]);
+      const current = photosResult.rows.map(photoFromRow);
+      const visible = partnerVisiblePhotos(current, moderationFromRow(moderationResult.rows[0]));
+      const proposed = visible.filter((photo) => photo.id !== photoId).map((photo, index) => ({
+        ...photo, sortOrder: index, isCover: index === 0,
+      }));
+      await this.upsertModeration(
+        client,
+        { venueId: owner.room_id ? null : venueId, roomId: owner.room_id },
+        actorId,
+        { photos: photoSnapshot(current.filter((photo) => photo.status === "published")) },
+        { photos: photoSnapshot(proposed) },
+      );
+      await this.audit(client, actorId, "partner_photo_removed", "room_photo", photoId, { ...photoFromRow(owner) }, {
+        roomId: owner.room_id, venueId,
+      });
+      await client.query("commit");
+      return true;
+    } catch (error) {
+      await client.query("rollback");
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   async setScheduleException(
@@ -1092,32 +1460,37 @@ export class PostgresPartnerCatalogRepository implements PartnerCatalogRepositor
       if (current.status !== "pending") {
         throw new PartnerCatalogError("MODERATION_ALREADY_REVIEWED", "Это изменение уже обработано другим администратором.");
       }
-      if (current.target_type === "venue" && decision === "approved") {
-        const data = current.proposed_data;
-        await client.query(`/* rooms:approve-venue-moderation */
-          update venues set title = $2, city = $3, address = $4, venue_type = nullif($5,''),
-            description = $6, rules = $7, amenities = $8, payment_methods = $9,
-            updated_at = now()
-          where id = $1::uuid
-        `, [
-          current.target_id, textValue(data.title), textValue(data.city), textValue(data.address),
-          textValue(data.venueType), textValue(data.description), textValue(data.rules),
-          stringArray(data.amenities), paymentMethodsValue(data.paymentMethods),
-        ]);
+      if (current.target_type === "venue") {
+        const data = decision === "approved" ? current.proposed_data : current.before_data;
+        if (decision === "approved" && typeof data.title === "string") {
+          await client.query(`/* rooms:approve-venue-moderation */
+            update venues set title = $2, city = $3, address = $4, venue_type = nullif($5,''),
+              description = $6, rules = $7, amenities = $8, payment_methods = $9,
+              updated_at = now()
+            where id = $1::uuid
+          `, [
+            current.target_id, textValue(data.title), textValue(data.city), textValue(data.address),
+            textValue(data.venueType), textValue(data.description), textValue(data.rules),
+            stringArray(data.amenities), paymentMethodsValue(data.paymentMethods),
+          ]);
+        }
+        await this.applyPhotoModerationSnapshot(client, { venueId: current.target_id, roomId: null }, data);
       }
       if (current.target_type === "room") {
         const publicationRequested = current.proposed_data.publicationRequested === true;
+        const data = decision === "approved" ? current.proposed_data : current.before_data;
         if (decision === "approved") {
-          await this.applyRoomModerationSnapshot(client, current.target_id, current.proposed_data);
+          await this.applyRoomModerationSnapshot(client, current.target_id, data);
           if (publicationRequested) {
             await client.query("update rooms set status = 'published', updated_at = now() where id = $1::uuid", [current.target_id]);
           }
         } else {
-          await this.applyRoomModerationSnapshot(client, current.target_id, current.before_data);
+          await this.applyRoomModerationSnapshot(client, current.target_id, data);
           if (publicationRequested) {
             await client.query("update rooms set status = case when status = 'published' then status else 'hidden' end, updated_at = now() where id = $1::uuid", [current.target_id]);
           }
         }
+        await this.applyPhotoModerationSnapshot(client, { venueId: null, roomId: current.target_id }, data);
       }
       await client.query(`/* rooms:complete-admin-moderation */
         update moderation_requests set status = $2::moderation_status, reviewed_by = $3::uuid,
@@ -1185,9 +1558,28 @@ export class PostgresPartnerCatalogRepository implements PartnerCatalogRepositor
     await this.replaceServices(client, roomId, services);
   }
 
+  private async applyPhotoModerationSnapshot(
+    client: PoolClient,
+    target: { venueId: string | null; roomId: string | null },
+    data: Record<string, unknown>,
+  ): Promise<void> {
+    const photos = photosValue(data.photos);
+    if (!photos) return;
+    const targetColumn = target.roomId ? "room_id" : "venue_id";
+    const targetId = target.roomId ?? target.venueId;
+    if (!targetId) return;
+    await client.query(`update room_photos set status = 'hidden', is_cover = false, updated_at = now()
+      where ${targetColumn} = $1::uuid`, [targetId]);
+    for (const [index, photo] of photos.entries()) {
+      await client.query(`update room_photos set status = 'published', sort_order = $3,
+        is_cover = $4, updated_at = now()
+        where id = $1::uuid and ${targetColumn} = $2::uuid`, [photo.id, targetId, index, index === 0]);
+    }
+  }
+
   private roomFromRow(
     row: RoomDetailsRow,
-    photoPaths: string[],
+    photos: PartnerPhotoRecord[],
     services: RoomService[],
     pendingChange: PartnerModerationChange | null,
   ): PartnerRoomRecord {
@@ -1209,7 +1601,8 @@ export class PostgresPartnerCatalogRepository implements PartnerCatalogRepositor
       promotion: row.promotion,
       features: row.features ?? [],
       tags: row.tags ?? [],
-      photoPaths,
+      photoPaths: photos.map((photo) => photo.landscapeUrl),
+      photos,
       services,
       opensAtHour: clockHour(row.opens_at),
       closesAtHour: clockHour(row.closes_at, row.closes_next_day),
@@ -1267,7 +1660,9 @@ export class PostgresPartnerCatalogRepository implements PartnerCatalogRepositor
       from moderation_requests where ${targetColumn} = $1::uuid and status = 'pending'
       order by created_at desc limit 1 for update`, [targetId]);
     const current = existing.rows[0];
-    const original = current?.before_data ? cloneObject(current.before_data) : cloneObject(beforeData);
+    const original = current?.before_data
+      ? { ...cloneObject(beforeData), ...cloneObject(current.before_data) }
+      : cloneObject(beforeData);
     const proposed = { ...(current?.proposed_data ? cloneObject(current.proposed_data) : {}), ...cloneObject(proposedData) };
     const fields = changedFields(original, proposed);
     if (!fields.length) {

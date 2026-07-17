@@ -1,12 +1,20 @@
 import cors from "@fastify/cors";
-import Fastify, { type FastifyError, type FastifyInstance, type FastifyReply } from "fastify";
+import multipart from "@fastify/multipart";
+import Fastify, { type FastifyError, type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
 import { readFile } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { basename, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { AuthConflictError, AuthService, MemoryAuthRepository, normalizeRussianPhone, passwordResetLifetimeSeconds, type AuthRepository, type IssuedAuthSession } from "./auth.js";
 import { MemoryBookingRepository, type BookingRepository, type BookingStatusGroup, type PartnerBookingStatusGroup } from "./bookings.js";
 import { MemoryCatalogRepository, type CatalogRepository } from "./catalog.js";
 import { MemoryPaymentRepository, type PaymentRepository } from "./payments.js";
+import {
+  MAX_PHOTO_BYTES,
+  MemoryPhotoStorage,
+  processPhoto,
+  type PhotoStorage,
+  type PhotoVariant,
+} from "./media.js";
 import {
   MemoryNotificationRepository,
   NotificationCipher,
@@ -45,6 +53,7 @@ import type {
 
 interface AppConfig {
   publicSiteUrl: string;
+  publicApiUrl: string;
   corsOrigins: string[];
   logger: boolean;
   repository: CatalogRepository;
@@ -54,6 +63,7 @@ interface AppConfig {
   reservationRepository: PartnerReservationRepository;
   partnerCatalogRepository: PartnerCatalogRepository;
   notificationRepository: NotificationRepository;
+  photoStorage: PhotoStorage;
   authTokenSecret: string;
   notificationEncryptionKey: string;
   secureCookies: boolean;
@@ -230,6 +240,15 @@ interface ReservationCancelBody {
 
 interface PartnerRoomParams {
   roomId: string;
+}
+
+interface PartnerPhotoParams {
+  photoId: string;
+}
+
+interface MediaParams {
+  storageKey: string;
+  fileName: string;
 }
 
 interface PartnerScheduleDateParams {
@@ -474,8 +493,10 @@ function blockedChatContact(text: string): string | null {
   return phoneLike.some((value) => (value.match(/\d/g) ?? []).length >= 10) ? "номер телефона" : null;
 }
 
-function photoUrl(baseUrl: string, path: string): string {
-  const base = baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`;
+function photoUrl(siteUrl: string, apiUrl: string, path: string): string {
+  if (/^https?:\/\//iu.test(path) || path.startsWith("data:")) return path;
+  const selectedBase = path.startsWith("/media/") ? apiUrl : siteUrl;
+  const base = selectedBase.endsWith("/") ? selectedBase : `${selectedBase}/`;
   return new URL(path.replace(/^\//, ""), base).toString();
 }
 
@@ -483,6 +504,7 @@ async function presentRoom(
   repository: CatalogRepository,
   room: Room,
   publicSiteUrl: string,
+  publicApiUrl: string,
   date?: string,
   durationMinutes = room.minimumHours * 60,
   preferredTime?: string,
@@ -512,7 +534,7 @@ async function presentRoom(
     features: room.features,
     tags: room.tags,
     promotion: room.promotion,
-    photos: room.photoPaths.map((path) => photoUrl(publicSiteUrl, path)),
+    photos: room.photoPaths.map((path) => photoUrl(publicSiteUrl, publicApiUrl, path)),
     nearestWindows,
   };
 }
@@ -549,6 +571,7 @@ export function buildApp(overrides: Partial<AppConfig> = {}): FastifyInstance {
   const partnerCatalogRepository = overrides.partnerCatalogRepository ?? new MemoryPartnerCatalogRepository();
   const config: AppConfig = {
     publicSiteUrl: overrides.publicSiteUrl ?? "https://amodous.github.io/Rooms-bron",
+    publicApiUrl: overrides.publicApiUrl ?? "http://127.0.0.1:3001",
     corsOrigins: overrides.corsOrigins ?? ["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:3001", "http://127.0.0.1:3001", "http://localhost:4173", "http://127.0.0.1:4173", "https://amodous.github.io"],
     logger: overrides.logger ?? false,
     repository,
@@ -558,6 +581,7 @@ export function buildApp(overrides: Partial<AppConfig> = {}): FastifyInstance {
     reservationRepository,
     partnerCatalogRepository,
     notificationRepository: overrides.notificationRepository ?? new MemoryNotificationRepository(),
+    photoStorage: overrides.photoStorage ?? new MemoryPhotoStorage(),
     authTokenSecret: overrides.authTokenSecret ?? "rooms-local-development-secret-change-me-2026",
     notificationEncryptionKey: overrides.notificationEncryptionKey ?? overrides.authTokenSecret ?? "rooms-local-development-secret-change-me-2026",
     secureCookies: overrides.secureCookies ?? false,
@@ -565,6 +589,9 @@ export function buildApp(overrides: Partial<AppConfig> = {}): FastifyInstance {
     exposePasswordResetToken: overrides.exposePasswordResetToken ?? false,
   };
   const app = Fastify({ logger: config.logger });
+  void app.register(multipart, {
+    limits: { files: 1, fields: 2, fileSize: MAX_PHOTO_BYTES },
+  });
   const auth = new AuthService(config.authRepository, config.authTokenSecret);
   const notifications = new NotificationService(
     config.notificationRepository,
@@ -605,6 +632,39 @@ export function buildApp(overrides: Partial<AppConfig> = {}): FastifyInstance {
     if (!current) throw new ApiError(401, "UNAUTHORIZED", "Войдите в админку Rooms.");
     if (current.user.role !== "admin") throw new ApiError(403, "ADMIN_FORBIDDEN", "Этот раздел доступен только администратору Rooms.");
     return current.user;
+  };
+
+  const uploadPartnerPhoto = async (
+    request: FastifyRequest,
+    reply: FastifyReply,
+    roomId: string | null,
+  ) => {
+    const { actorId, venueId } = await requirePartnerVenue(request.headers.authorization);
+    const upload = await request.file();
+    if (!upload) throw new ApiError(400, "PHOTO_REQUIRED", "Выберите фотографию для загрузки.");
+    const buffer = await upload.toBuffer();
+    const processed = await processPhoto(buffer);
+    const stored = await config.photoStorage.save(processed);
+    try {
+      const photo = await config.partnerCatalogRepository.addPhoto(venueId, roomId, actorId, {
+        ...stored,
+        originalName: basename(upload.filename || "photo").slice(0, 255),
+        mimeType: processed.mimeType,
+        fileSizeBytes: buffer.length,
+        width: processed.width,
+        height: processed.height,
+      });
+      if (!photo) {
+        await config.photoStorage.remove(stored.storageKey);
+        throw new ApiError(404, roomId ? "PARTNER_ROOM_NOT_FOUND" : "PARTNER_VENUE_NOT_FOUND", roomId
+          ? "Помещение не найдено в кабинете этой площадки."
+          : "Площадка кабинета не найдена.");
+      }
+      return reply.code(202).send(photo);
+    } catch (error) {
+      await config.photoStorage.remove(stored.storageKey);
+      throw error;
+    }
   };
 
   const validatePartnerVenueWrite = (body: PartnerVenueWrite) => {
@@ -775,6 +835,25 @@ export function buildApp(overrides: Partial<AppConfig> = {}): FastifyInstance {
     const extension = request.params.assetName.split(".").pop()?.toLowerCase() ?? "";
     const asset = await readFile(resolve(projectRoot, "assets", request.params.assetName));
     return reply.header("Cache-Control", "public, max-age=3600").type(assetContentTypes[extension] ?? "application/octet-stream").send(asset);
+  });
+
+  app.get<{ Params: MediaParams }>("/media/:storageKey/:fileName", {
+    schema: {
+      params: {
+        type: "object",
+        additionalProperties: false,
+        required: ["storageKey", "fileName"],
+        properties: {
+          storageKey: { type: "string", minLength: 36, maxLength: 36 },
+          fileName: { type: "string", enum: ["original.webp", "landscape.webp", "portrait.webp"] },
+        },
+      },
+    },
+  }, async (request, reply) => {
+    const variant = request.params.fileName.replace(".webp", "") as PhotoVariant;
+    const photo = await config.photoStorage.read(request.params.storageKey, variant);
+    if (!photo) throw new ApiError(404, "PHOTO_NOT_FOUND", "Фотография не найдена.");
+    return reply.header("Cache-Control", "public, max-age=31536000, immutable").type("image/webp").send(photo);
   });
 
   app.get("/health", async () => ({
@@ -1535,6 +1614,35 @@ export function buildApp(overrides: Partial<AppConfig> = {}): FastifyInstance {
     return config.partnerCatalogRepository.listRooms(venueId);
   });
 
+  app.post("/v1/partner/venue/photos", async (request, reply) => uploadPartnerPhoto(request, reply, null));
+
+  app.post<{ Params: PartnerRoomParams }>("/v1/partner/rooms/:roomId/photos", {
+    schema: {
+      params: {
+        type: "object",
+        additionalProperties: false,
+        required: ["roomId"],
+        properties: { roomId: { type: "string", minLength: 36, maxLength: 36 } },
+      },
+    },
+  }, async (request, reply) => uploadPartnerPhoto(request, reply, request.params.roomId));
+
+  app.delete<{ Params: PartnerPhotoParams }>("/v1/partner/photos/:photoId", {
+    schema: {
+      params: {
+        type: "object",
+        additionalProperties: false,
+        required: ["photoId"],
+        properties: { photoId: { type: "string", minLength: 36, maxLength: 36 } },
+      },
+    },
+  }, async (request, reply) => {
+    const { actorId, venueId } = await requirePartnerVenue(request.headers.authorization);
+    const removed = await config.partnerCatalogRepository.removePhoto(venueId, request.params.photoId, actorId);
+    if (!removed) throw new ApiError(404, "PARTNER_PHOTO_NOT_FOUND", "Фотография не найдена в кабинете этой площадки.");
+    return reply.code(202).send({ status: "review", photoId: request.params.photoId });
+  });
+
   app.post<{ Body: PartnerRoomWrite }>("/v1/partner/rooms", {
     schema: { body: partnerRoomWriteSchema },
   }, async (request, reply) => {
@@ -1852,6 +1960,7 @@ export function buildApp(overrides: Partial<AppConfig> = {}): FastifyInstance {
       config.repository,
       room,
       config.publicSiteUrl,
+      config.publicApiUrl,
       filters.date,
       filters.durationMinutes,
       filters.time,
@@ -1892,7 +2001,7 @@ export function buildApp(overrides: Partial<AppConfig> = {}): FastifyInstance {
     const foundRoom = await config.repository.findRoom(request.params.roomId, date);
     if (!foundRoom) throw new ApiError(404, "ROOM_NOT_FOUND", "Помещение не найдено.");
     const room = (await withReservationBlocks([foundRoom], date))[0]!;
-    const summary = await presentRoom(config.repository, room, config.publicSiteUrl, date);
+    const summary = await presentRoom(config.repository, room, config.publicSiteUrl, config.publicApiUrl, date);
     return {
       ...summary,
       description: room.description,

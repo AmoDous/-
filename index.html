@@ -543,6 +543,7 @@
     .photo-preview.cover{grid-column:1/-1}
     .photo-preview img{width:100%;height:100%;object-fit:cover;display:block}
     .photo-preview:not(.cover) img{object-fit:contain;background:var(--mint)}
+    .photo-state{position:absolute;left:8px;bottom:8px;padding:5px 8px;border-radius:999px;background:rgba(31,25,22,.82);color:#fff;font-size:11px;font-weight:800}
     .photo-delete{
       position:absolute;right:8px;top:8px;width:30px;height:30px;border:1px solid rgba(234,222,216,.9);
       border-radius:50%;background:rgba(255,255,255,.9);font-weight:900;box-shadow:var(--soft);
@@ -621,6 +622,7 @@
     .moderation-diff-list{display:grid;padding:0 12px 10px}
     .moderation-diff-row{display:grid;grid-template-columns:minmax(100px,.65fr) repeat(2,minmax(0,1fr));gap:10px;padding:9px 0;border-top:1px solid var(--line);font-size:12px;line-height:1.4}
     .moderation-diff-row>strong{font-size:12px}.moderation-diff-row>span{min-width:0;overflow-wrap:anywhere}.moderation-before{color:var(--muted)}.moderation-after{color:var(--ink);font-weight:800}
+    .moderation-photo-strip{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px;margin-top:5px}.moderation-photo-strip img{width:100%;aspect-ratio:3/2;object-fit:cover;border:1px solid var(--line);border-radius:6px;background:var(--mint)}
     .moderation-reject{position:relative}.moderation-reject>summary{display:inline-flex;align-items:center;min-height:38px;padding:0 12px;border:1px solid var(--line);border-radius:8px;background:#fff;cursor:pointer;font-size:13px;font-weight:900;list-style:none}.moderation-reject>summary::-webkit-details-marker{display:none}
     .moderation-reject-form{display:grid;grid-template-columns:minmax(180px,1fr) auto;gap:8px;width:min(100%,520px);margin-top:8px}.moderation-reject-form textarea{min-height:64px;background:#fff}.moderation-comment{margin-top:10px;padding:10px 12px;border-left:3px solid var(--accent);border-radius:0 8px 8px 0;background:var(--paper-2);font-size:12px;line-height:1.45}
     .booking-note{
@@ -1119,6 +1121,23 @@
       }
       finally{clearTimeout(timer)}
     }
+    function apiAssetUrl(value){
+      const path=String(value||"");if(!path||/^(?:https?:|data:|blob:)/i.test(path))return path;
+      return path.startsWith("/media/")&&apiState.base?`${apiState.base}${path}`:path;
+    }
+    async function apiUpload(path,file,{retry=true}={}){
+      const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),30000),body=new FormData();body.append("file",file,file.name);
+      const headers={Accept:"application/json"};if(apiState.accessToken)headers.Authorization=`Bearer ${apiState.accessToken}`;
+      try{
+        const response=await fetch(`${apiState.base}${path}`,{method:"POST",headers,body,credentials:"include",signal:controller.signal});
+        const payload=await response.json().catch(()=>null);
+        if(!response.ok){
+          if(response.status===401&&retry){const refreshed=await apiRequest("/v1/auth/refresh",{method:"POST",retry:false});acceptApiSession(refreshed);return apiUpload(path,file,{retry:false})}
+          const error=new Error(payload?.message||`Rooms API ${response.status}`);error.status=response.status;error.code=payload?.code||"API_ERROR";throw error;
+        }
+        return payload;
+      }finally{clearTimeout(timer)}
+    }
     function apiJson(path){return apiRequest(path)}
     function syncApiUser(user){
       const account={id:user.id,role:user.role,name:user.name,email:user.email||"",phone:phone(user.phone),city:user.city||state.city,passwordResetRequired:Boolean(user.passwordResetRequired),api:true,lastActiveAt:new Date().toISOString()};
@@ -1160,7 +1179,7 @@
     async function syncPartnerApiReservations(){if(!apiState.connected||!apiState.accessToken)return [];return mergePartnerApiReservations(await apiRequest("/v1/partner/reservations?includeCancelled=true",{auth:true}))}
     function localApiModerationData(type,value={}){
       const rename=type==="venue"?{venueType:"type",description:"about"}:{description:"desc",promotion:"promo",capacityMax:"capacity",pricePerHour:"price"},result={};
-      Object.entries(value||{}).forEach(([key,item])=>{if(key==="publicationRequested"){result.status=item?"published":"hidden";return}if(key==="capacityMin")return;const target=rename[key]||key;result[target]=target==="services"&&Array.isArray(item)?item.map(service=>({id:service.id,name:service.name,desc:service.description||"",price:Number(service.price)||0})):item});
+      Object.entries(value||{}).forEach(([key,item])=>{if(key==="publicationRequested"){result.status=item?"published":"hidden";return}if(key==="capacityMin")return;if(key==="photos"){result.images=Array.isArray(item)?item.map(photo=>apiAssetUrl(photo?.originalUrl||photo?.landscapeUrl)).filter(Boolean):[];return}const target=rename[key]||key;result[target]=target==="services"&&Array.isArray(item)?item.map(service=>({id:service.id,name:service.name,desc:service.description||"",price:Number(service.price)||0})):item});
       return result;
     }
     function localModerationFromApi(item){
@@ -1187,25 +1206,27 @@
       const before=localApiModerationData(targetType,change.beforeData),after=localApiModerationData(targetType,change.proposedData),fields=moderationChangedFields(before,after);
       saveModerationRequests([{id:change.id,targetType,targetId,targetTitle,kind:targetType==="room"&&!Object.keys(before).length?"create":"update",status:"pending",before,after,fields,created:change.createdAt,updated:change.createdAt,server:true},...list]);
     }
+    function normalizeApiPhotos(items=[]){return (Array.isArray(items)?items:[]).map(photo=>({...photo,originalUrl:apiAssetUrl(photo.originalUrl),landscapeUrl:apiAssetUrl(photo.landscapeUrl||photo.originalUrl),portraitUrl:apiAssetUrl(photo.portraitUrl||photo.originalUrl)}))}
     function syncApiPartnerVenue(venueData){
-      mergeApiVenue(venueData);const auth=partnerAuthSession(),list=ensurePartnerAccounts(),currentAccount=list.find(item=>item.id===auth?.accountId||item.api===true),account=currentAccount?{...currentAccount,venueId:venueData.slug,venueTitle:venueData.title,status:"active",api:true}:currentAccount;
+      const photoAssets=normalizeApiPhotos(venueData.photos),cover=photoAssets[0]?.landscapeUrl||apiAssetUrl(venueData.photoPaths?.[0]);mergeApiVenue(venueData,cover);const auth=partnerAuthSession(),list=ensurePartnerAccounts(),currentAccount=list.find(item=>item.id===auth?.accountId||item.api===true),account=currentAccount?{...currentAccount,venueId:venueData.slug,venueTitle:venueData.title,status:"active",api:true}:currentAccount;
       if(account){savePartnerAccounts([account,...list.filter(item=>item.id!==account.id)]);write(store.partnerAuth,{...auth,accountId:account.id,verified:true,api:true})}
       const weekSchedule=Array.isArray(venueData.weekSchedule)?Object.fromEntries(venueData.weekSchedule.map((item,index)=>[weekDayOptions[Number(item.weekday)-1]?.[0]||weekDayOptions[index]?.[0],{enabled:item.enabled!==false,start:Number(item.opensAtHour),end:Number(item.closesAtHour)}]).filter(([key])=>key)):null;
       const specialHours=Array.isArray(venueData.scheduleExceptions)?Object.fromEntries(venueData.scheduleExceptions.map(item=>[item.date,{mode:item.mode,...(item.mode==="custom"?{start:Number(item.opensAtHour),end:Number(item.closesAtHour)}:{}),note:item.note||""}])):null;
-      const data=partnerData();data.venue={...data.venue,id:venueData.slug,apiId:venueData.id,city:venueData.city,title:venueData.title,address:venueData.address,type:venueData.venueType||data.venue.type,about:venueData.description??data.venue.about,rules:venueData.rules??data.venue.rules,contact:venueData.contactName??data.venue.contact,phone:venueData.contactPhone??data.venue.phone,email:venueData.contactEmail??data.venue.email,amenities:Array.isArray(venueData.amenities)?venueData.amenities:data.venue.amenities,paymentMethods:venueData.paymentMethods,publicationStatus:venueData.publicationStatus,partnerMode:venueData.partnerMode,...(weekSchedule?{weekSchedule}:{}),...(specialHours?{specialHours}:{})};
+      const data=partnerData();data.venue={...data.venue,id:venueData.slug,apiId:venueData.id,city:venueData.city,title:venueData.title,address:venueData.address,type:venueData.venueType||data.venue.type,about:venueData.description??data.venue.about,rules:venueData.rules??data.venue.rules,contact:venueData.contactName??data.venue.contact,phone:venueData.contactPhone??data.venue.phone,email:venueData.contactEmail??data.venue.email,amenities:Array.isArray(venueData.amenities)?venueData.amenities:data.venue.amenities,paymentMethods:venueData.paymentMethods,publicationStatus:venueData.publicationStatus,partnerMode:venueData.partnerMode,photoAssets,...(cover?{image:cover}:{}),...(weekSchedule?{weekSchedule}:{}),...(specialHours?{specialHours}:{})};
       const firstOpen=weekSchedule&&Object.values(weekSchedule).find(item=>item.enabled);if(firstOpen)data.venue.work=[firstOpen.start,firstOpen.end];
       savePartnerData(data);syncApiPartnerModeration("venue",venueData.slug,venueData.title,venueData.pendingChange);return account;
     }
     function syncApiPartnerRooms(items=[]){
       const data=partnerData(),localIds=[];
-      items.forEach(item=>{const live=rooms.find(room=>room.apiId===item.id||room.id===item.slug),id=live?.id||item.slug,old=data.rooms[id]||live||{},services=Array.isArray(item.services)?item.services.map(service=>({id:service.id,name:service.name,desc:service.description||"",price:Number(service.price)||0})):roomServices(old),images=Array.isArray(item.photoPaths)&&item.photoPaths.length?item.photoPaths:(old.images||live?.images||[roomImageForType(item.type)]);
-        data.rooms[id]={...old,id,apiId:item.id,type:item.type,status:item.publicationStatus,title:item.title,subtitle:item.subtitle||roomTypeLabel(item.type),capacity:Number(item.capacityMax)||1,price:Number(item.pricePerHour)||0,min:Number(item.minimumHours)||1,bufferEnabled:Number(item.bufferMinutes)>0,buffer:Number(item.bufferMinutes)||30,desc:item.description||"",rules:item.rules||"",promo:item.promotion||"",images,features:Array.isArray(item.features)?item.features:[],tags:Array.isArray(item.tags)?item.tags:tagsForType(item.type),services,work:[Number(item.opensAtHour),Number(item.closesAtHour)]};
+      items.forEach(item=>{const live=rooms.find(room=>room.apiId===item.id||room.id===item.slug),id=live?.id||item.slug,old=data.rooms[id]||live||{},services=Array.isArray(item.services)?item.services.map(service=>({id:service.id,name:service.name,desc:service.description||"",price:Number(service.price)||0})):roomServices(old),photoAssets=normalizeApiPhotos(item.photos),images=photoAssets.length?photoAssets.map(photo=>photo.originalUrl):(Array.isArray(item.photoPaths)&&item.photoPaths.length?item.photoPaths.map(apiAssetUrl):(old.images||live?.images||[roomImageForType(item.type)]));
+        data.rooms[id]={...old,id,apiId:item.id,type:item.type,status:item.publicationStatus,title:item.title,subtitle:item.subtitle||roomTypeLabel(item.type),capacity:Number(item.capacityMax)||1,price:Number(item.pricePerHour)||0,min:Number(item.minimumHours)||1,bufferEnabled:Number(item.bufferMinutes)>0,buffer:Number(item.bufferMinutes)||30,desc:item.description||"",rules:item.rules||"",promo:item.promotion||"",images,photoAssets,features:Array.isArray(item.features)?item.features:[],tags:Array.isArray(item.tags)?item.tags:tagsForType(item.type),services,work:[Number(item.opensAtHour),Number(item.closesAtHour)]};
         syncApiPartnerModeration("room",id,item.title,item.pendingChange);localIds.push(id);
       });
       data.venue.roomCount=Object.keys(data.rooms).length||data.venue.roomCount;savePartnerData(data);applyPartnerData();return localIds;
     }
+    async function syncPartnerApiCatalog(){const [venueData,roomData]=await Promise.all([apiRequest("/v1/partner/venue",{auth:true}),apiRequest("/v1/partner/rooms",{auth:true})]);syncApiPartnerVenue(venueData);syncApiPartnerRooms(roomData);return {venue:venueData,rooms:roomData}}
     async function syncPartnerApiContext(){
-      const [venueData,roomData]=await Promise.all([apiRequest("/v1/partner/venue",{auth:true}),apiRequest("/v1/partner/rooms",{auth:true})]);syncApiPartnerVenue(venueData);syncApiPartnerRooms(roomData);
+      const {rooms:roomData}=await syncPartnerApiCatalog();
       const [bookings,reservations,moderation]=await Promise.all([syncPartnerApiBookings(),syncPartnerApiReservations(),syncPartnerApiModerationHistory()]);return {rooms:roomData,bookings,reservations,moderation};
     }
     async function restoreApiSession(){
@@ -1916,8 +1937,9 @@
       if(typeof value==="object")return JSON.stringify(value);
       return String(value);
     }
+    function moderationPhotos(value,empty){const photos=(Array.isArray(value)?value:[]).filter(item=>typeof item==="string"&&item);return photos.length?`<span>${photos.length} фото</span><span class="moderation-photo-strip">${photos.slice(0,6).map(src=>`<img src="${esc(src)}" alt="">`).join("")}</span>`:`<span>${esc(empty)}</span>`}
     function moderationDiffHtml(item){
-      const fields=item.fields||moderationChangedFields(item.before,item.after),rows=fields.map(field=>`<div class="moderation-diff-row"><strong>${esc(moderationFieldLabel(field))}</strong><span class="moderation-before">Было: ${esc(moderationValue(item.before?.[field],item.kind==="create"?"новое помещение":"не указано"))}</span><span class="moderation-after">Станет: ${esc(moderationValue(item.after?.[field]))}</span></div>`).join("");
+      const fields=item.fields||moderationChangedFields(item.before,item.after),rows=fields.map(field=>{const empty=item.kind==="create"?"новое помещение":"не указано";return `<div class="moderation-diff-row"><strong>${esc(moderationFieldLabel(field))}</strong>${field==="images"?`<span class="moderation-before">Было: ${moderationPhotos(item.before?.[field],empty)}</span><span class="moderation-after">Станет: ${moderationPhotos(item.after?.[field],"не указано")}</span>`:`<span class="moderation-before">Было: ${esc(moderationValue(item.before?.[field],empty))}</span><span class="moderation-after">Станет: ${esc(moderationValue(item.after?.[field]))}</span>`}</div>`}).join("");
       return rows?`<details class="moderation-diff"><summary>Посмотреть изменения · ${fields.length}</summary><div class="moderation-diff-list">${rows}</div></details>`:"";
     }
     function queueModeration({targetType,targetId,targetTitle,before={},after={},kind="update"}){
@@ -2607,10 +2629,10 @@
       ctx.drawImage(img,0,0,canvas.width,canvas.height);
       return canvas.toDataURL("image/jpeg",.84);
     }
-    function photoManager({type,roomId="",images=[]}){
-      const cover=type==="venue",safe=images.filter(Boolean),target=cover?"обложку заведения":"фото комнаты";
-      const hint=cover?"Обложка режется в единый горизонтальный формат 1200×800 для карточек каталога.":"Фото галереи сохраняют своё соотношение. Вертикальные кадры показываются без обрезки на мягкой подложке.";
-      return `<div class="photo-manager"><div class="photo-manager-head"><div><h3 style="margin:0">${cover?"Фото заведения":"Фото помещения"}</h3><p class="photo-hint" style="margin:4px 0 0">${hint}</p></div><label class="btn soft upload-control">${cover?"Заменить фото":"Добавить фото"}<input data-photo-upload="${type}" ${roomId?`data-room-id="${roomId}"`:""} type="file" accept="image/*" ${cover?"":"multiple"}></label></div><div class="photo-grid">${safe.map((src,i)=>`<div class="photo-preview ${cover?"cover":""}"><img src="${esc(src)}" alt="${esc(target)} ${i+1}"><button class="photo-delete" data-photo-delete="${type}|${roomId}|${i}" type="button" aria-label="Удалить фото">×</button></div>`).join("")}</div></div>`;
+    function photoManager({type,roomId="",images=[],photos=[]}){
+      const cover=type==="venue",safe=(photos.length?photos:images.filter(Boolean).map(originalUrl=>({originalUrl}))),target=cover?"обложку заведения":"фото комнаты";
+      const hint=cover?"Rooms сохранит исходный кадр и подготовит горизонтальную обложку 1600×1000 без растяжения.":"Исходная ориентация сохранится. Для каталога и телефона сервер отдельно подготовит аккуратные версии кадра.";
+      return `<div class="photo-manager"><div class="photo-manager-head"><div><h3 style="margin:0">${cover?"Фото заведения":"Фото помещения"}</h3><p class="photo-hint" style="margin:4px 0 0">${hint}</p></div><label class="btn soft upload-control">${cover?"Заменить фото":"Добавить фото"}<input data-photo-upload="${type}" ${roomId?`data-room-id="${roomId}"`:""} type="file" accept="image/jpeg,image/png,image/webp" ${cover?"":"multiple"}></label></div><div class="photo-grid">${safe.map((photo,i)=>`<div class="photo-preview ${cover?"cover":""}"><img src="${esc(photo.originalUrl||photo.landscapeUrl)}" alt="${esc(target)} ${i+1}">${photo.status==="review"?`<span class="photo-state">На проверке</span>`:""}${photo.id||!partnerApiEnabled()?`<button class="photo-delete" data-photo-delete="${type}|${roomId}|${i}|${esc(photo.id||"")}" type="button" aria-label="Удалить фото">×</button>`:""}</div>`).join("")}</div></div>`;
     }
 
     function filters(){return {city:E.searchCity.value,type:E.spaceType.value,date:E.date.value,time:E.time.value,hours:Number(E.hours.value),guests:Number(E.guests.value||1),age:E.age.value,maxPrice:Number(E.maxPrice.value)||0,features:[...E.chips.querySelectorAll("input:checked")].map(i=>i.value)}}
@@ -3622,7 +3644,7 @@
           <form class="partner-editor" id="partnerVenueEdit">
             <h3>Заведение</h3>
             <div class="form"><div class="field"><label>Город</label><select name="city">${cities.map(c=>`<option ${c===data.venue.city?"selected":""}>${c}</option>`).join("")}</select></div><div class="field"><label>Название</label><input name="title" value="${esc(data.venue.title)}" required></div><div class="field full"><label>Адрес</label><input name="address" value="${esc(data.venue.address)}" required></div><div class="field"><label>Тип площадки</label><input name="type" value="${esc(data.venue.type||"")}" placeholder="Лофт, детская комната, караоке"></div><div class="field"><label>Помещений внутри</label><input name="roomCount" type="number" min="1" value="${Number(data.venue.roomCount)||ids.length||1}"></div><div class="field full"><label>Статус в Rooms</label><div class="venue-status-summary"><span class="status ${publicationStatusClass(data.venue.publicationStatus)}">${publicationStatusLabel(data.venue.publicationStatus)}</span><span class="status ${cabinetStatusClass(data.venue.cabinetStatus)}">${cabinetStatusLabel(data.venue.cabinetStatus)}</span><small>Публикацией и доступом управляет Rooms после проверки данных площадки.</small></div></div><div class="field"><label>Контактное лицо</label><input name="contact" value="${esc(data.venue.contact||"")}" required></div><div class="field"><label>Телефон</label><input name="phone" type="tel" value="${esc(data.venue.phone||"")}" required></div><div class="field"><label>Email партнёра</label><input name="email" type="email" value="${esc(data.venue.email||"")}" placeholder="manager@venue.ru"></div><div class="field full"><label>Оплата остатка на площадке</label><div class="chips">${paymentMethodChips(data.venue.paymentMethods)}</div></div><div class="field full"><label>Режим работы по дням</label>${weekScheduleEditor(data.venue.weekSchedule,data.venue.work||[10,24])}</div><div class="field full"><label>Описание для клиента</label><textarea name="about" required>${esc(data.venue.about)}</textarea></div><div class="field full"><label>Общие правила площадки</label><textarea name="rules" placeholder="Например: ограничения по шуму, еде, алкоголю, депозиту">${esc(data.venue.rules||"")}</textarea></div></div>
-            ${photoManager({type:"venue",images:[data.venue.image]})}
+            ${photoManager({type:"venue",images:[data.venue.image],photos:data.venue.photoAssets||[]})}
             <div class="partner-actions"><button class="btn primary" type="submit">Сохранить заведение</button></div>
           </form>
           <div class="partner-editor">
@@ -3639,7 +3661,7 @@
             <form id="partnerRoomEdit" data-room-id="${selected}">
               <div class="admin-meta" style="margin-bottom:12px">${roomQualityTags(live||room)}</div>
               <div class="form"><div class="field"><label>Название комнаты</label><input name="title" value="${esc(room.title)}" required></div><div class="field"><label>Формат для каталога</label><select name="type">${roomTypeSelect(room.type||live?.type||"lounge")}</select></div><div class="field"><label>Тип на карточке</label><input name="subtitle" value="${esc(room.subtitle)}" required></div><div class="field"><label>Статус</label><select name="status">${roomStatusSelect(live?.status||room.status||"published")}</select></div><div class="field"><label>Вместимость</label><input name="capacity" type="number" min="1" value="${room.capacity}" required></div><div class="field"><label>Цена за час, руб.</label><input name="price" type="number" min="1" value="${room.price}" required></div><div class="field"><label>Минимум часов</label><input name="min" type="number" min="1" max="12" value="${room.min}" required></div><div class="field"><label>Подготовка нужна</label><select name="bufferEnabled"><option value="0" ${room.bufferEnabled?"":"selected"}>Нет</option><option value="1" ${room.bufferEnabled?"selected":""}>Да</option></select></div><div class="field"><label>Время подготовки</label><select name="buffer">${[15,30,45,60].map(x=>`<option value="${x}" ${Number(room.buffer||30)===x?"selected":""}>${x} мин</option>`).join("")}</select></div><div class="field"><label>Начало работы</label><select name="workStart">${hourOptionList((room.work||live?.work||[10,24])[0],0,23)}</select></div><div class="field"><label>Конец работы</label><select name="workEnd">${hourOptionList((room.work||live?.work||[10,24])[1],1,30)}</select></div><div class="field full"><label>Что есть в помещении</label><div class="chips">${roomFeatureChips(room.features||live?.features||featuresForType(room.type||live?.type||"lounge"))}</div></div><div class="field full"><label>Дополнительные услуги и цена</label>${serviceEditor(roomServices(room))}</div><div class="field full"><label>Акция для клиентов</label><textarea name="promo" placeholder="Необязательно. Укажите условия простым текстом">${esc(room.promo||"")}</textarea><small>Заполненная акция появится в карточке после проверки Rooms, а в каталоге будет метка «есть акции».</small></div><div class="field full"><label>Описание</label><textarea name="desc" required>${esc(room.desc)}</textarea></div><div class="field full"><label>Правила и нюансы</label><textarea name="rules" required>${esc(room.rules)}</textarea></div></div>
-              ${photoManager({type:"room",roomId:selected,images:room.images||[]})}
+              ${photoManager({type:"room",roomId:selected,images:room.images||[],photos:room.photoAssets||[]})}
               <div class="partner-actions"><button class="btn primary" type="submit">Сохранить помещение</button></div>
             </form>
           </div>
@@ -3815,6 +3837,18 @@
       const files=[...input.files||[]].filter(f=>f.type.startsWith("image/"));
       if(!files.length)return;
       const type=input.dataset.photoUpload,data=partnerData();
+      if(partnerApiEnabled()){
+        const id=input.dataset.roomId,room=data.rooms[id],current=type==="venue"?(data.venue.photoAssets||[]):(room?.photoAssets||[]),limit=type==="venue"?1:Math.max(0,10-current.length),selected=files.slice(0,limit);
+        if(!selected.length){input.value="";return toast(type==="venue"?"Сначала удалите текущую обложку.":"Для одного помещения можно загрузить до 10 фотографий.")}
+        input.disabled=true;toast(selected.length>1?`Загружаем фотографии: 0 из ${selected.length}`:"Загружаем и подготавливаем фотографию…");
+        try{
+          const target=type==="venue"?"/v1/partner/venue/photos":`/v1/partner/rooms/${encodeURIComponent(room?.apiId||id)}/photos`;
+          for(const [index,file] of selected.entries()){await apiUpload(target,file);if(selected.length>1)toast(`Загружаем фотографии: ${index+1} из ${selected.length}`)}
+          await syncPartnerApiCatalog();state.partnerRoom=id||state.partnerRoom;hydrate();renderPartnerCabinet(true);toast(type==="venue"?"Новая обложка подготовлена и отправлена на проверку Rooms.":"Фотографии подготовлены и отправлены на проверку Rooms.");
+        }catch(error){toast(error.name==="AbortError"?"Загрузка заняла слишком много времени. Попробуйте ещё раз.":error.message||"Не удалось загрузить фотографию.")}
+        finally{input.disabled=false;input.value=""}
+        return;
+      }
       try{
         const normalized=[];
         for(const file of files.slice(0,type==="venue"?1:6))normalized.push(type==="venue"?await cropCoverPhoto(file):await resizeGalleryPhoto(file));
@@ -3826,8 +3860,13 @@
         logActivity("photo_moderation",type==="venue"?"Партнёр отправил обложку на проверку":"Партнёр отправил фото помещения на проверку",type==="venue"?data.venue.title:(data.rooms[input.dataset.roomId]?.title||"помещение"),"partner");hydrate();renderPartnerCabinet(true);toast(type==="venue"?"Обложка подготовлена и отправлена на проверку Rooms.":"Фото подготовлены и отправлены на проверку Rooms.");
       }catch{toast("Не удалось обработать фото. Попробуйте другой файл.")}
     }
-    function deletePartnerPhoto(payload){
-      const [type,roomId,indexRaw]=payload.split("|"),index=Number(indexRaw),data=partnerData();
+    async function deletePartnerPhoto(payload){
+      const [type,roomId,indexRaw,photoId]=payload.split("|"),index=Number(indexRaw),data=partnerData();
+      if(partnerApiEnabled()&&photoId){
+        try{await apiRequest(`/v1/partner/photos/${encodeURIComponent(photoId)}`,{method:"DELETE",auth:true});await syncPartnerApiCatalog();state.partnerRoom=roomId||state.partnerRoom;hydrate();renderPartnerCabinet(true);toast("Изменение фотографии отправлено на проверку Rooms.")}
+        catch(error){toast(error.message||"Не удалось удалить фотографию.")}
+        return;
+      }
       if(type==="venue")queueModeration({targetType:"venue",targetId:data.venue.id,targetTitle:data.venue.title,before:{image:data.venue.image},after:{image:defaultPartnerData().venue.image}});
       else{
         const draft=moderationDraftFor("room",roomId),arr=[...(draft.images||data.rooms[roomId]?.images||[])];arr.splice(index,1);

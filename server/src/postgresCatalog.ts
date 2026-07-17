@@ -312,7 +312,7 @@ export class PostgresCatalogRepository implements CatalogRepository {
       this.sql.query<PhotoRow>(`/* rooms:room-photos */
         select p.room_id::text, coalesce(p.landscape_url, p.original_url) as url
         from room_photos p
-        where p.room_id = any($1::uuid[])
+        where p.room_id = any($1::uuid[]) and p.status = 'published'
         order by p.room_id, p.is_cover desc, p.sort_order, p.created_at
       `, [roomIds]),
       this.sql.query<ServiceRow>(`/* rooms:room-services */

@@ -1,7 +1,10 @@
 import "dotenv/config";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
+import { rm } from "node:fs/promises";
+import { resolve } from "node:path";
 import { Pool } from "pg";
+import sharp from "sharp";
 import { postgresPoolConfig } from "../src/storage.js";
 
 const apiBaseUrl = String(process.env.API_BASE_URL || "http://127.0.0.1:3001").replace(/\/$/u, "");
@@ -14,6 +17,7 @@ const password = "rooms2026";
 const adminEmail = "admin@rooms.ru";
 const adminPassword = process.env.DEMO_ADMIN_PASSWORD?.trim() || "rooms2026";
 let smokeRoomId = "";
+let smokePhotoStorageKey = "";
 
 async function api<T>(path: string, options: { method?: string; token?: string; body?: unknown } = {}): Promise<T> {
   const response = await fetch(`${apiBaseUrl}${path}`, {
@@ -27,6 +31,19 @@ async function api<T>(path: string, options: { method?: string; token?: string; 
   });
   const payload = await response.json().catch(() => null);
   if (!response.ok) throw new Error(`${options.method ?? "GET"} ${path} failed with ${response.status}: ${JSON.stringify(payload)}`);
+  return payload as T;
+}
+
+async function apiPhoto<T>(path: string, token: string, file: Buffer): Promise<T> {
+  const form = new FormData();
+  form.append("file", new Blob([new Uint8Array(file)], { type: "image/png" }), "smoke-room.png");
+  const response = await fetch(`${apiBaseUrl}${path}`, {
+    method: "POST",
+    headers: { Accept: "application/json", Authorization: `Bearer ${token}` },
+    body: form,
+  });
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) throw new Error(`POST ${path} failed with ${response.status}: ${JSON.stringify(payload)}`);
   return payload as T;
 }
 
@@ -106,6 +123,16 @@ try {
   smokeRoomId = room.id;
   assert.equal(room.publicationStatus, "review");
   assert.equal(room.services.length, 1);
+  const photoSource = await sharp({
+    create: { width: 900, height: 1400, channels: 3, background: { r: 194, g: 92, b: 71 } },
+  }).png().toBuffer();
+  const photo = await apiPhoto<Record<string, any>>(`/v1/partner/rooms/${room.id}/photos`, token, photoSource);
+  assert.equal(photo.status, "review");
+  smokePhotoStorageKey = String(photo.originalUrl).split("/")[2] || "";
+  assert.match(smokePhotoStorageKey, /^[0-9a-f-]{36}$/u);
+  const generatedPhoto = await fetch(`${apiBaseUrl}${photo.landscapeUrl}`);
+  assert.equal(generatedPhoto.status, 200);
+  assert.match(generatedPhoto.headers.get("content-type") ?? "", /image\/webp/u);
   const editedRoom = await api<Record<string, any>>(`/v1/partner/rooms/${room.id}`, {
     method: "PATCH",
     token,
@@ -142,6 +169,7 @@ try {
   const approvedRooms = await api<any[]>("/v1/partner/rooms", { token });
   assert.equal(approvedRooms[0]?.title, "Smoke Room Edited");
   assert.equal(approvedRooms[0]?.publicationStatus, "published");
+  assert.equal(approvedRooms[0]?.photos[0]?.status, "published");
 
   const rejectedDraft = await api<Record<string, any>>(`/v1/partner/rooms/${room.id}`, {
     method: "PATCH",
@@ -182,6 +210,9 @@ try {
     or before_data->>'targetId' = $2 or before_data->>'targetId' = $3`, [userId, venueId, smokeRoomId]).catch(() => undefined);
   await pool.query("delete from venues where id = $1::uuid", [venueId]).catch(() => undefined);
   await pool.query("delete from users where id = $1::uuid", [userId]).catch(() => undefined);
+  if (smokePhotoStorageKey) {
+    await rm(resolve(process.env.MEDIA_STORAGE_DIR?.trim() || "server-data/media", smokePhotoStorageKey), { recursive: true, force: true });
+  }
   const cleanup = await pool.query<{ users: number; venues: number }>(`
     select
       (select count(*)::integer from users where id = $1::uuid) as users,

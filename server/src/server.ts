@@ -1,5 +1,7 @@
 import "dotenv/config";
+import { resolve } from "node:path";
 import { buildApp } from "./app.js";
+import { LocalPhotoStorage } from "./media.js";
 import {
   NotificationCipher,
   NotificationDispatcher,
@@ -11,6 +13,8 @@ import { createCatalogStorage } from "./storage.js";
 const host = process.env.HOST?.trim() || "127.0.0.1";
 const port = Number(process.env.PORT || 3001);
 const publicSiteUrl = process.env.PUBLIC_SITE_URL?.trim() || "https://amodous.github.io/Rooms-bron";
+const publicApiUrl = process.env.PUBLIC_API_URL?.trim() || `http://${host}:${port}`;
+const mediaStorageDir = resolve(process.env.MEDIA_STORAGE_DIR?.trim() || "server-data/media");
 const authTokenSecret = process.env.AUTH_TOKEN_SECRET?.trim() || "";
 const effectiveAuthTokenSecret = authTokenSecret || "rooms-local-development-secret-change-me-2026";
 const notificationEncryptionKey = process.env.NOTIFICATION_ENCRYPTION_KEY?.trim() || effectiveAuthTokenSecret;
@@ -46,6 +50,7 @@ if (!Number.isInteger(notificationWorkerIntervalMs) || notificationWorkerInterva
 const storage = await createCatalogStorage();
 const app = buildApp({
   publicSiteUrl,
+  publicApiUrl,
   corsOrigins,
   logger: true,
   repository: storage.repository,
@@ -55,6 +60,7 @@ const app = buildApp({
   reservationRepository: storage.reservationRepository,
   partnerCatalogRepository: storage.partnerCatalogRepository,
   notificationRepository: storage.notificationRepository,
+  photoStorage: new LocalPhotoStorage(mediaStorageDir),
   authTokenSecret: effectiveAuthTokenSecret,
   notificationEncryptionKey,
   secureCookies,

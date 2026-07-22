@@ -1,13 +1,15 @@
 import cors from "@fastify/cors";
 import multipart from "@fastify/multipart";
 import Fastify, { type FastifyError, type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { basename, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { AuthConflictError, AuthService, MemoryAuthRepository, normalizeRussianPhone, passwordResetLifetimeSeconds, type AuthRepository, type IssuedAuthSession } from "./auth.js";
-import { MemoryBookingRepository, type BookingRepository, type BookingStatusGroup, type PartnerBookingStatusGroup } from "./bookings.js";
+import { MemoryBookingRepository, type BookingRecord, type BookingRepository, type BookingStatusGroup, type PartnerBookingStatusGroup } from "./bookings.js";
 import { MemoryCatalogRepository, type CatalogRepository } from "./catalog.js";
-import { MemoryPaymentRepository, type PaymentRepository } from "./payments.js";
+import { MemoryPaymentRepository, type PaymentRecord, type PaymentRepository } from "./payments.js";
+import type { SberCallbackPayload } from "./paymentGateway.js";
 import {
   MAX_PHOTO_BYTES,
   MemoryPhotoStorage,
@@ -40,6 +42,30 @@ import {
   type PartnerReservationType,
   type TechnicalCategory,
 } from "./reservations.js";
+import {
+  MemoryReviewRepository,
+  type ReviewQueryStatus,
+  type ReviewRepository,
+  type ReviewStatus,
+} from "./reviews.js";
+import {
+  MemorySupportRepository,
+  type SupportActorRole,
+  type SupportQueryStatus,
+  type SupportRepository,
+  type SupportStatus,
+} from "./support.js";
+import {
+  MemoryFinanceRepository,
+  type BankAccountQueryStatus,
+  type FinanceActorRole,
+  type FinancePayoutQueryStatus,
+  type FiscalReceiptQueryStatus,
+  type FinanceRefundQueryStatus,
+  type FinanceRepository,
+} from "./finance.js";
+import { MemoryFiscalReceiptRepository, type FiscalReceiptRepository } from "./receipts.js";
+import { MemoryRefundRepository, type RefundRepository } from "./refunds.js";
 import { availabilityForRoom, intersectAvailability, isIsoDate, MOSCOW_TIMEZONE, moscowToday } from "./availability.js";
 import type {
   AvailabilityWindow,
@@ -63,9 +89,15 @@ interface AppConfig {
   reservationRepository: PartnerReservationRepository;
   partnerCatalogRepository: PartnerCatalogRepository;
   notificationRepository: NotificationRepository;
+  reviewRepository: ReviewRepository;
+  supportRepository: SupportRepository;
+  financeRepository: FinanceRepository;
+  receiptRepository: FiscalReceiptRepository;
+  refundRepository: RefundRepository;
   photoStorage: PhotoStorage;
   authTokenSecret: string;
   notificationEncryptionKey: string;
+  productionMode: boolean;
   secureCookies: boolean;
   enableDemoPayments: boolean;
   exposePasswordResetToken: boolean;
@@ -187,9 +219,73 @@ interface BookingParams {
   bookingId: string;
 }
 
+interface BookingCancelBody {
+  reason: string;
+}
+
+interface SupportParams {
+  supportId: string;
+}
+
+interface SupportOpenBody {
+  topic: string;
+  body: string;
+}
+
+interface SupportMessageBody {
+  body: string;
+}
+
+interface SupportStatusBody {
+  status: SupportStatus;
+}
+
+interface SupportQuerystring {
+  status?: SupportQueryStatus;
+  limit?: number;
+}
+
+interface PartnerBankAccountBody {
+  bankName: string;
+  bik: string;
+  settlementAccount: string;
+}
+
+interface AccountingListQuerystring {
+  status?: string;
+  limit?: number;
+}
+
+interface VenueFinanceParams {
+  venueId: string;
+}
+
+interface RefundParams {
+  refundId: string;
+}
+
+interface ReceiptParams {
+  receiptId: string;
+}
+
+interface PayoutParams {
+  payoutId: string;
+}
+
+interface ProviderOperationBody {
+  providerOperationId?: string;
+}
+
+interface CreatePayoutsBody {
+  bookingIds?: string[];
+  scheduledFor?: string;
+}
+
 interface PaymentParams {
   paymentId: string;
 }
+
+type SberWebhookBody = SberCallbackPayload;
 
 interface PartnerBookingRejectBody {
   reason: string;
@@ -244,6 +340,34 @@ interface PartnerRoomParams {
 
 interface PartnerPhotoParams {
   photoId: string;
+}
+
+interface PartnerPhotoOrderBody {
+  photoIds: string[];
+}
+
+interface ReviewParams {
+  reviewId: string;
+}
+
+interface ReviewSubmitBody {
+  roomId: string;
+  rating: number;
+  body: string;
+}
+
+interface ReviewDecisionBody {
+  status: ReviewStatus;
+  comment?: string;
+}
+
+interface ReviewReplyBody {
+  body: string;
+}
+
+interface ReviewQuerystring {
+  status?: ReviewQueryStatus;
+  limit?: number;
 }
 
 interface MediaParams {
@@ -375,6 +499,36 @@ const partnerRoomWriteSchema = {
     status: { type: "string", enum: ["review", "published", "hidden"] },
   },
 } as const;
+const partnerPhotoOrderBodySchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["photoIds"],
+  properties: {
+    photoIds: {
+      type: "array",
+      minItems: 1,
+      maxItems: 10,
+      uniqueItems: true,
+      items: { type: "string", pattern: "^[0-9a-fA-F-]{36}$" },
+    },
+  },
+} as const;
+const reviewParamsSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["reviewId"],
+  properties: { reviewId: { type: "string", minLength: 36, maxLength: 36 } },
+} as const;
+const reviewSubmitBodySchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["roomId", "rating", "body"],
+  properties: {
+    roomId: { type: "string", minLength: 36, maxLength: 36 },
+    rating: { type: "integer", minimum: 1, maximum: 5 },
+    body: { type: "string", minLength: 10, maxLength: 3000 },
+  },
+} as const;
 const partnerScheduleDateParamsSchema = {
   type: "object",
   additionalProperties: false,
@@ -407,25 +561,49 @@ class ApiError extends Error {
 class AuthAttemptLimiter {
   private readonly entries = new Map<string, { failures: number; resetAt: number }>();
 
+  constructor(
+    private readonly maxFailures = 5,
+    private readonly windowMs = 10 * 60 * 1000,
+    private readonly maxEntries = 20_000,
+  ) {}
+
   blocked(key: string): boolean {
     const entry = this.entries.get(key);
     if (!entry || entry.resetAt <= Date.now()) {
       this.entries.delete(key);
       return false;
     }
-    return entry.failures >= 5;
+    return entry.failures >= this.maxFailures;
   }
 
   fail(key: string): void {
+    if (this.entries.size >= this.maxEntries && !this.entries.has(key)) this.prune();
     const current = this.entries.get(key);
     this.entries.set(key, current && current.resetAt > Date.now()
       ? { ...current, failures: current.failures + 1 }
-      : { failures: 1, resetAt: Date.now() + 10 * 60 * 1000 });
+      : { failures: 1, resetAt: Date.now() + this.windowMs });
   }
 
   clear(key: string): void {
     this.entries.delete(key);
   }
+
+  private prune(): void {
+    const now = Date.now();
+    for (const [key, entry] of this.entries) {
+      if (entry.resetAt <= now) this.entries.delete(key);
+    }
+    while (this.entries.size >= this.maxEntries) {
+      const oldest = this.entries.keys().next().value as string | undefined;
+      if (!oldest) break;
+      this.entries.delete(oldest);
+    }
+  }
+}
+
+function loginAttemptKey(login: string): string {
+  const normalized = normalizeRussianPhone(login) ?? login.trim().toLocaleLowerCase("ru-RU");
+  return createHash("sha256").update(normalized).digest("hex");
 }
 
 function email(value: string): string | null {
@@ -569,6 +747,11 @@ export function buildApp(overrides: Partial<AppConfig> = {}): FastifyInstance {
     ?? (bookingRepository instanceof MemoryBookingRepository ? new MemoryPartnerReservationRepository(bookingRepository, repository) : null);
   if (!reservationRepository) throw new Error("reservationRepository is required with a non-memory booking repository.");
   const partnerCatalogRepository = overrides.partnerCatalogRepository ?? new MemoryPartnerCatalogRepository();
+  const reviewRepository = overrides.reviewRepository ?? new MemoryReviewRepository(bookingRepository, repository);
+  const supportRepository = overrides.supportRepository ?? new MemorySupportRepository(bookingRepository);
+  const financeRepository = overrides.financeRepository ?? new MemoryFinanceRepository(bookingRepository, supportRepository);
+  const receiptRepository = overrides.receiptRepository ?? new MemoryFiscalReceiptRepository();
+  const refundRepository = overrides.refundRepository ?? new MemoryRefundRepository();
   const config: AppConfig = {
     publicSiteUrl: overrides.publicSiteUrl ?? "https://amodous.github.io/Rooms-bron",
     publicApiUrl: overrides.publicApiUrl ?? "http://127.0.0.1:3001",
@@ -581,9 +764,15 @@ export function buildApp(overrides: Partial<AppConfig> = {}): FastifyInstance {
     reservationRepository,
     partnerCatalogRepository,
     notificationRepository: overrides.notificationRepository ?? new MemoryNotificationRepository(),
+    reviewRepository,
+    supportRepository,
+    financeRepository,
+    receiptRepository,
+    refundRepository,
     photoStorage: overrides.photoStorage ?? new MemoryPhotoStorage(),
     authTokenSecret: overrides.authTokenSecret ?? "rooms-local-development-secret-change-me-2026",
     notificationEncryptionKey: overrides.notificationEncryptionKey ?? overrides.authTokenSecret ?? "rooms-local-development-secret-change-me-2026",
+    productionMode: overrides.productionMode ?? false,
     secureCookies: overrides.secureCookies ?? false,
     enableDemoPayments: overrides.enableDemoPayments ?? true,
     exposePasswordResetToken: overrides.exposePasswordResetToken ?? false,
@@ -597,7 +786,8 @@ export function buildApp(overrides: Partial<AppConfig> = {}): FastifyInstance {
     config.notificationRepository,
     new NotificationCipher(config.notificationEncryptionKey),
   );
-  const authAttempts = new AuthAttemptLimiter();
+  const loginAccountAttempts = new AuthAttemptLimiter(5);
+  const loginIpAttempts = new AuthAttemptLimiter(30);
   const passwordResetAttempts = new AuthAttemptLimiter();
   const passwordResetConfirmAttempts = new AuthAttemptLimiter();
 
@@ -607,6 +797,24 @@ export function buildApp(overrides: Partial<AppConfig> = {}): FastifyInstance {
     } catch (error) {
       app.log.error({ err: error, notificationEvent: label }, "could not enqueue Rooms notification");
     }
+  };
+
+  const queuePaymentPaidNotifications = async (payment: PaymentRecord, booking: BookingRecord): Promise<void> => {
+    await queueNotification("booking_prepayment_paid", async () => {
+      await notifications.rememberBookingRecipients(booking.id, booking.clientId, booking.venue.id);
+      await notifications.enqueueBookingClient(booking.id, {
+        eventKey: "booking_prepayment_paid",
+        title: `Предоплата по заявке ${booking.publicNumber} получена`,
+        body: `Оплачено ${payment.amount.toLocaleString("ru-RU")} руб. Остаток на месте: ${booking.money.remainingOnSite.toLocaleString("ru-RU")} руб.`,
+        dedupeKey: `prepayment-paid|${payment.paymentId}|client`,
+      });
+      await notifications.enqueueBookingVenue(booking.id, {
+        eventKey: "booking_prepayment_paid",
+        title: `Заявка ${booking.publicNumber} оплачена`,
+        body: "Клиент внёс предоплату. Контакты клиента и детали брони доступны в кабинете Rooms.",
+        dedupeKey: `prepayment-paid|${payment.paymentId}|venue`,
+      });
+    });
   };
 
   const rememberNotificationUser = async (user: IssuedAuthSession["user"]): Promise<void> => {
@@ -632,6 +840,24 @@ export function buildApp(overrides: Partial<AppConfig> = {}): FastifyInstance {
     if (!current) throw new ApiError(401, "UNAUTHORIZED", "Войдите в админку Rooms.");
     if (current.user.role !== "admin") throw new ApiError(403, "ADMIN_FORBIDDEN", "Этот раздел доступен только администратору Rooms.");
     return current.user;
+  };
+
+  const requireFinanceActor = async (authorization: string | undefined) => {
+    const current = await auth.authenticate(authorization);
+    if (!current) throw new ApiError(401, "UNAUTHORIZED", "Войдите в бухгалтерию Rooms.");
+    if (current.user.role !== "admin" && current.user.role !== "accountant") {
+      throw new ApiError(403, "ACCOUNTING_FORBIDDEN", "Финансовый раздел доступен бухгалтеру и администратору Rooms.");
+    }
+    return { ...current.user, role: current.user.role as FinanceActorRole };
+  };
+
+  const requireSupportActor = async (authorization: string | undefined) => {
+    const current = await auth.authenticate(authorization);
+    if (!current) throw new ApiError(401, "UNAUTHORIZED", "Войдите в Rooms, чтобы открыть обращение.");
+    if (!["client", "partner", "admin"].includes(current.user.role)) {
+      throw new ApiError(403, "SUPPORT_FORBIDDEN", "Обращения по брони доступны клиенту, площадке и Rooms.");
+    }
+    return { id: current.user.id, role: current.user.role as SupportActorRole };
   };
 
   const uploadPartnerPhoto = async (
@@ -742,7 +968,7 @@ export function buildApp(overrides: Partial<AppConfig> = {}): FastifyInstance {
         currency: "RUB" as const,
       },
       commission,
-      partnerAmount: moneyAmount(total - commission),
+      partnerAmount: moneyAmount(prepayment - commission),
     };
   };
 
@@ -794,6 +1020,19 @@ export function buildApp(overrides: Partial<AppConfig> = {}): FastifyInstance {
     credentials: true,
   });
 
+  app.addHook("onSend", async (request, reply, payload) => {
+    reply.header("X-Content-Type-Options", "nosniff");
+    reply.header("X-Frame-Options", "DENY");
+    reply.header("Referrer-Policy", "strict-origin-when-cross-origin");
+    reply.header("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+    if (config.productionMode) reply.header("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+    if (request.url.split("?", 1)[0]?.startsWith("/v1/auth/")) {
+      reply.header("Cache-Control", "no-store");
+      reply.header("Pragma", "no-cache");
+    }
+    return payload;
+  });
+
   app.setErrorHandler((error: FastifyError | ApiError, request, reply) => {
     if (error instanceof ApiError) {
       return reply.status(error.statusCode).send({ ...errorPayload(error.code, error.message, error.details), requestId: request.id });
@@ -818,10 +1057,120 @@ export function buildApp(overrides: Partial<AppConfig> = {}): FastifyInstance {
     return reply.status(404).send({ ...errorPayload("ROUTE_NOT_FOUND", "Маршрут API не найден."), requestId: request.id });
   });
 
-  app.get("/", async (_request, reply) => {
-    const html = await readFile(resolve(projectRoot, "index.html"));
-    return reply.header("Cache-Control", "no-store").type("text/html; charset=utf-8").send(html);
-  });
+  const servePublicSite = async (request: FastifyRequest, reply: FastifyReply) => {
+    const source = await readFile(resolve(projectRoot, "index.html"), "utf8");
+    const params = request.params as { venueSlug?: string; roomSlug?: string };
+    const venueSlug = params.venueSlug?.trim() ?? "";
+    const roomSlug = params.roomSlug?.trim() ?? "";
+    const publicPath = request.url.split("?", 1)[0]?.replace(/\/+$/, "") || "/";
+    const catalogRoute = publicPath === "/catalog";
+    const partnerApplyRoute = publicPath === "/for-partners";
+    const privateRoute = ({
+      "/account": { title: "Личный кабинет — Rooms", description: "Заявки, избранные помещения и настройки профиля Rooms." },
+      "/partner": { title: "Кабинет партнёра — Rooms", description: "Заявки, календарь и управление площадкой в Rooms." },
+      "/admin": { title: "Админка — Rooms", description: "Защищённый кабинет управления сервисом Rooms." },
+      "/accounting": { title: "Бухгалтерия — Rooms", description: "Защищённый кабинет финансовых операций Rooms." },
+    } as const)[publicPath as "/account" | "/partner" | "/admin" | "/accounting"];
+    const escapeHtml = (value: string) => value.replace(/[&<>"']/g, (character) => ({
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#039;",
+    })[character] ?? character);
+    let html = source;
+    let routeFound = true;
+    if (privateRoute) {
+      html = html
+        .replace(/<title>[^<]*<\/title>/, `<title>${escapeHtml(privateRoute.title)}</title>`)
+        .replace(/<meta name="description" content="[^"]*">/, `<meta name="description" content="${escapeHtml(privateRoute.description)}">`)
+        .replace(/<meta property="og:title" content="[^"]*">/, `<meta property="og:title" content="${escapeHtml(privateRoute.title)}">`)
+        .replace(/<meta property="og:description" content="[^"]*">/, `<meta property="og:description" content="${escapeHtml(privateRoute.description)}">`)
+        .replace("</head>", '<meta name="robots" content="noindex,nofollow" data-rooms-private="true">\n</head>');
+    }
+    if (catalogRoute) {
+      const title = "Каталог помещений — Rooms";
+      const description = "Подберите приватное помещение по городу, дате, времени, вместимости и удобствам в каталоге Rooms.";
+      const requestOrigin = `${request.protocol}://${request.headers.host ?? "localhost"}`;
+      const canonicalSiteUrl = config.productionMode ? config.publicSiteUrl : requestOrigin;
+      const baseUrl = new URL(canonicalSiteUrl.endsWith("/") ? canonicalSiteUrl : `${canonicalSiteUrl}/`);
+      const canonical = new URL("catalog", baseUrl).href;
+      html = html
+        .replace(/<title>[^<]*<\/title>/, `<title>${escapeHtml(title)}</title>`)
+        .replace(/<meta name="description" content="[^"]*">/, `<meta name="description" content="${escapeHtml(description)}">`)
+        .replace(/<meta property="og:title" content="[^"]*">/, `<meta property="og:title" content="${escapeHtml(title)}">`)
+        .replace(/<meta property="og:description" content="[^"]*">/, `<meta property="og:description" content="${escapeHtml(description)}">`)
+        .replace("</head>", `<meta property="og:url" content="${escapeHtml(canonical)}">\n<link rel="canonical" href="${escapeHtml(canonical)}">\n</head>`);
+    }
+    if (partnerApplyRoute) {
+      const title = "Добавить площадку — Rooms";
+      const description = "Подключите площадку к Rooms: добавьте помещения, расписание, услуги и получайте заявки на свободное время.";
+      const requestOrigin = `${request.protocol}://${request.headers.host ?? "localhost"}`;
+      const canonicalSiteUrl = config.productionMode ? config.publicSiteUrl : requestOrigin;
+      const baseUrl = new URL(canonicalSiteUrl.endsWith("/") ? canonicalSiteUrl : `${canonicalSiteUrl}/`);
+      const canonical = new URL("for-partners", baseUrl).href;
+      html = html
+        .replace(/<title>[^<]*<\/title>/, `<title>${escapeHtml(title)}</title>`)
+        .replace(/<meta name="description" content="[^"]*">/, `<meta name="description" content="${escapeHtml(description)}">`)
+        .replace(/<meta property="og:title" content="[^"]*">/, `<meta property="og:title" content="${escapeHtml(title)}">`)
+        .replace(/<meta property="og:description" content="[^"]*">/, `<meta property="og:description" content="${escapeHtml(description)}">`)
+        .replace("</head>", `<meta property="og:url" content="${escapeHtml(canonical)}">\n<link rel="canonical" href="${escapeHtml(canonical)}">\n</head>`);
+    }
+    if (venueSlug) {
+      const venue = (await config.repository.listVenues()).find((item) => item.slug === venueSlug);
+      const publicVenue = venue?.publicationStatus === "published" && venue.partnerMode === "catalog" ? venue : null;
+      const room = roomSlug ? await config.repository.findRoom(roomSlug) : null;
+      const publicRoom = room?.publicationStatus === "published" && room.venueId === publicVenue?.id ? room : null;
+      routeFound = Boolean(publicVenue && (!roomSlug || publicRoom));
+      if (publicVenue && routeFound) {
+        const representative = publicRoom ?? (await config.repository.searchRooms({
+          city: publicVenue.city,
+          durationMinutes: 60,
+          features: [],
+          sort: "rating",
+        })).find((item) => item.venueId === publicVenue.id) ?? null;
+        const title = publicRoom
+          ? `${publicRoom.title} в ${publicVenue.title} — Rooms`
+          : `${publicVenue.title} — помещения для бронирования в ${publicVenue.city} | Rooms`;
+        const description = publicRoom?.description || publicVenue.description || `${publicVenue.title}, ${publicVenue.address}. Бронирование приватных помещений в Rooms.`;
+        const requestOrigin = `${request.protocol}://${request.headers.host ?? "localhost"}`;
+        const canonicalSiteUrl = config.productionMode ? config.publicSiteUrl : requestOrigin;
+        const baseUrl = new URL(canonicalSiteUrl.endsWith("/") ? canonicalSiteUrl : `${canonicalSiteUrl}/`);
+        const canonical = new URL(`venues/${encodeURIComponent(publicVenue.slug)}${publicRoom ? `/rooms/${encodeURIComponent(publicRoom.slug)}` : ""}`, baseUrl).href;
+        const image = representative?.photoPaths[0] ? photoUrl(config.publicSiteUrl, config.publicApiUrl, representative.photoPaths[0]) : "";
+        html = html
+          .replace(/<title>[^<]*<\/title>/, `<title>${escapeHtml(title)}</title>`)
+          .replace(/<meta name="description" content="[^"]*">/, `<meta name="description" content="${escapeHtml(description)}">`)
+          .replace(/<meta property="og:title" content="[^"]*">/, `<meta property="og:title" content="${escapeHtml(title)}">`)
+          .replace(/<meta property="og:description" content="[^"]*">/, `<meta property="og:description" content="${escapeHtml(description)}">`)
+          .replace("</head>", `${image ? `<meta property="og:image" content="${escapeHtml(image)}">\n` : ""}<meta property="og:url" content="${escapeHtml(canonical)}">\n<link rel="canonical" href="${escapeHtml(canonical)}">\n</head>`);
+      }
+    }
+    html = html.replace("</head>", '<base href="/">\n<meta name="rooms-routing" content="path">\n</head>');
+    return reply.status(routeFound ? 200 : 404).header("Cache-Control", "no-store").type("text/html; charset=utf-8").send(html);
+  };
+  const publicSlugSchema = {
+    type: "object",
+    required: ["venueSlug"],
+    properties: {
+      venueSlug: { type: "string", pattern: "^[a-z0-9][a-z0-9-]{0,79}$" },
+      roomSlug: { type: "string", pattern: "^[a-z0-9][a-z0-9-]{0,79}$" },
+    },
+  } as const;
+
+  app.get("/", servePublicSite);
+  app.get("/catalog", servePublicSite);
+  app.get("/for-partners", servePublicSite);
+  app.get("/account", servePublicSite);
+  app.get("/partner", servePublicSite);
+  app.get("/admin", servePublicSite);
+  app.get("/accounting", servePublicSite);
+  app.get<{ Params: { venueSlug: string } }>("/venues/:venueSlug", {
+    schema: { params: publicSlugSchema },
+  }, servePublicSite);
+  app.get<{ Params: { venueSlug: string; roomSlug: string } }>("/venues/:venueSlug/rooms/:roomSlug", {
+    schema: { params: { ...publicSlugSchema, required: ["venueSlug", "roomSlug"] } },
+  }, servePublicSite);
 
   app.get<{ Params: { assetName: string } }>("/assets/:assetName", {
     schema: {
@@ -860,6 +1209,7 @@ export function buildApp(overrides: Partial<AppConfig> = {}): FastifyInstance {
     status: "ok",
     database: config.repository.storage === "postgresql" ? "up" : "down",
     storage: config.repository.storage,
+    payments: config.paymentRepository.provider,
     time: new Date().toISOString(),
   }));
 
@@ -935,14 +1285,19 @@ export function buildApp(overrides: Partial<AppConfig> = {}): FastifyInstance {
     },
   }, async (request, reply) => {
     const login = request.body.login.trim();
-    const attemptKey = `${request.ip}|${login.toLocaleLowerCase("ru-RU")}`;
-    if (authAttempts.blocked(attemptKey)) throw new ApiError(429, "LOGIN_RATE_LIMITED", "Слишком много попыток. Повторите вход через 10 минут.");
+    const accountAttemptKey = loginAttemptKey(login);
+    const ipAttemptKey = request.ip;
+    if (loginAccountAttempts.blocked(accountAttemptKey) || loginIpAttempts.blocked(ipAttemptKey)) {
+      reply.header("Retry-After", "600");
+      throw new ApiError(429, "LOGIN_RATE_LIMITED", "Слишком много попыток. Повторите вход через 10 минут.");
+    }
     const session = await auth.login(login, request.body.password, request.ip, request.headers["user-agent"] ?? null);
     if (!session) {
-      authAttempts.fail(attemptKey);
+      loginAccountAttempts.fail(accountAttemptKey);
+      loginIpAttempts.fail(ipAttemptKey);
       throw new ApiError(401, "INVALID_CREDENTIALS", "Неверная почта, телефон или пароль.");
     }
-    authAttempts.clear(attemptKey);
+    loginAccountAttempts.clear(accountAttemptKey);
     await rememberNotificationUser(session.user);
     refreshCookie(reply, session.refreshToken, session.refreshExpiresIn, config.secureCookies);
     return authResponse(session);
@@ -1195,6 +1550,180 @@ export function buildApp(overrides: Partial<AppConfig> = {}): FastifyInstance {
     return config.bookingRepository.listByClient(current.user.id, request.query.statusGroup ?? "all");
   });
 
+  app.get("/v1/me/reviews", async (request) => {
+    const current = await auth.authenticate(request.headers.authorization);
+    if (!current || current.user.role !== "client") throw new ApiError(401, "UNAUTHORIZED", "Войдите в личный кабинет клиента.");
+    return config.reviewRepository.listByClient(current.user.id);
+  });
+
+  app.get<{ Querystring: SupportQuerystring }>("/v1/me/support", {
+    schema: {
+      querystring: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          status: { type: "string", enum: ["open", "working", "closed", "all"] },
+          limit: { type: "integer", minimum: 1, maximum: 200, default: 80 },
+        },
+      },
+    },
+  }, async (request) => {
+    const current = await auth.authenticate(request.headers.authorization);
+    if (!current || current.user.role !== "client") throw new ApiError(401, "UNAUTHORIZED", "Войдите в личный кабинет клиента.");
+    return config.supportRepository.list(current.user.id, "client", request.query.status ?? "all", request.query.limit ?? 80);
+  });
+
+  app.post<{ Params: BookingParams; Body: BookingCancelBody }>("/v1/bookings/:bookingId/cancel", {
+    schema: {
+      params: {
+        type: "object",
+        additionalProperties: false,
+        required: ["bookingId"],
+        properties: { bookingId: { type: "string", minLength: 36, maxLength: 36 } },
+      },
+      body: {
+        type: "object",
+        additionalProperties: false,
+        required: ["reason"],
+        properties: { reason: { type: "string", minLength: 3, maxLength: 1000 } },
+      },
+    },
+  }, async (request) => {
+    const current = await auth.authenticate(request.headers.authorization);
+    if (!current || current.user.role !== "client") throw new ApiError(401, "UNAUTHORIZED", "Войдите в личный кабинет клиента.");
+    const booking = await config.bookingRepository.cancelByClient(current.user.id, request.params.bookingId, request.body.reason.trim());
+    if (!booking) throw new ApiError(404, "BOOKING_NOT_FOUND", "Бронь не найдена в личном кабинете.");
+    await queueNotification("booking_cancelled_by_client", async () => {
+      await notifications.rememberBookingRecipients(booking.id, booking.clientId, booking.venue.id);
+      await notifications.enqueueBookingVenue(booking.id, {
+        eventKey: "booking_cancelled_by_client",
+        title: `Клиент отменил ${booking.publicNumber}`,
+        body: booking.paymentStatus === "refund_pending"
+          ? `Бронь отменена после предоплаты. В очереди Rooms создана задача на возврат. Причина: ${booking.cancellationReason}`
+          : `Время освобождено. Причина: ${booking.cancellationReason}`,
+        dedupeKey: `booking-cancelled-client|${booking.id}`,
+      });
+    });
+    return booking;
+  });
+
+  app.get<{ Params: BookingParams }>("/v1/bookings/:bookingId/support", {
+    schema: {
+      params: {
+        type: "object",
+        additionalProperties: false,
+        required: ["bookingId"],
+        properties: { bookingId: { type: "string", minLength: 36, maxLength: 36 } },
+      },
+    },
+  }, async (request) => {
+    const actor = await requireSupportActor(request.headers.authorization);
+    const records = await config.supportRepository.listByBooking(actor.id, actor.role, request.params.bookingId);
+    if (!records) throw new ApiError(404, "BOOKING_NOT_FOUND", "Бронь не найдена или недоступна этому кабинету.");
+    return records;
+  });
+
+  app.post<{ Params: BookingParams; Body: SupportOpenBody }>("/v1/bookings/:bookingId/support", {
+    schema: {
+      params: {
+        type: "object",
+        additionalProperties: false,
+        required: ["bookingId"],
+        properties: { bookingId: { type: "string", minLength: 36, maxLength: 36 } },
+      },
+      body: {
+        type: "object",
+        additionalProperties: false,
+        required: ["topic", "body"],
+        properties: {
+          topic: { type: "string", minLength: 3, maxLength: 200 },
+          body: { type: "string", minLength: 5, maxLength: 3000 },
+        },
+      },
+    },
+  }, async (request, reply) => {
+    const actor = await requireSupportActor(request.headers.authorization);
+    const record = await config.supportRepository.open(
+      actor.id,
+      actor.role,
+      request.params.bookingId,
+      request.body.topic.trim(),
+      request.body.body.trim(),
+    );
+    if (!record) throw new ApiError(404, "BOOKING_NOT_FOUND", "Бронь не найдена или недоступна этому кабинету.");
+    return reply.code(201).send(record);
+  });
+
+  app.post<{ Params: SupportParams; Body: SupportMessageBody }>("/v1/support/:supportId/messages", {
+    schema: {
+      params: {
+        type: "object",
+        additionalProperties: false,
+        required: ["supportId"],
+        properties: { supportId: { type: "string", minLength: 36, maxLength: 36 } },
+      },
+      body: {
+        type: "object",
+        additionalProperties: false,
+        required: ["body"],
+        properties: { body: { type: "string", minLength: 5, maxLength: 3000 } },
+      },
+    },
+  }, async (request, reply) => {
+    const actor = await requireSupportActor(request.headers.authorization);
+    const record = await config.supportRepository.addMessage(actor.id, actor.role, request.params.supportId, request.body.body.trim());
+    if (!record) throw new ApiError(404, "SUPPORT_CASE_NOT_FOUND", "Обращение не найдено или недоступно этому кабинету.");
+    return reply.code(201).send(record);
+  });
+
+  app.post<{ Params: BookingParams }>("/v1/bookings/:bookingId/complete", {
+    schema: {
+      params: {
+        type: "object",
+        additionalProperties: false,
+        required: ["bookingId"],
+        properties: { bookingId: { type: "string", minLength: 36, maxLength: 36 } },
+      },
+    },
+  }, async (request) => {
+    const current = await auth.authenticate(request.headers.authorization);
+    if (!current || current.user.role !== "client") throw new ApiError(401, "UNAUTHORIZED", "Войдите в личный кабинет клиента.");
+    const booking = await config.bookingRepository.completeByClient(current.user.id, request.params.bookingId);
+    if (!booking) throw new ApiError(404, "BOOKING_NOT_FOUND", "Заявка не найдена в личном кабинете.");
+    await queueNotification("booking_completed_by_client", async () => {
+      await notifications.rememberBookingRecipients(booking.id, booking.clientId, booking.venue.id);
+      await notifications.enqueueBookingVenue(booking.id, {
+        eventKey: "booking_completed_by_client",
+        title: `Клиент подтвердил посещение ${booking.publicNumber}`,
+        body: `Бронь ${booking.publicNumber} завершена клиентом. Отзыв станет доступен после отправки и проверки Rooms.`,
+        dedupeKey: `booking-completed-client|${booking.id}`,
+      });
+    });
+    return booking;
+  });
+
+  app.post<{ Params: BookingParams; Body: ReviewSubmitBody }>("/v1/bookings/:bookingId/review", {
+    schema: {
+      params: {
+        type: "object",
+        additionalProperties: false,
+        required: ["bookingId"],
+        properties: { bookingId: { type: "string", minLength: 36, maxLength: 36 } },
+      },
+      body: reviewSubmitBodySchema,
+    },
+  }, async (request, reply) => {
+    const current = await auth.authenticate(request.headers.authorization);
+    if (!current || current.user.role !== "client") throw new ApiError(401, "UNAUTHORIZED", "Войдите в личный кабинет клиента.");
+    const review = await config.reviewRepository.submit(current.user.id, current.user.name, request.params.bookingId, {
+      roomId: request.body.roomId,
+      rating: request.body.rating,
+      body: request.body.body.trim(),
+    });
+    if (!review) throw new ApiError(404, "BOOKING_NOT_FOUND", "Завершённая бронь не найдена в личном кабинете.");
+    return reply.code(201).send(review);
+  });
+
   app.get<{ Params: BookingParams }>("/v1/bookings/:bookingId/messages", {
     schema: {
       params: {
@@ -1430,7 +1959,7 @@ export function buildApp(overrides: Partial<AppConfig> = {}): FastifyInstance {
       comment: body.comment?.trim() ?? "",
       money: { roomTotal, serviceTotal, total, prepayment, remainingOnSite: moneyAmount(total - prepayment), currency: "RUB" },
       commission,
-      partnerAmount: moneyAmount(total - commission),
+      partnerAmount: moneyAmount(prepayment - commission),
       legal: { ...body.legal, acceptedAt: acceptedAt.toISOString() },
       ip: request.ip,
       userAgent: request.headers["user-agent"] ?? null,
@@ -1466,7 +1995,9 @@ export function buildApp(overrides: Partial<AppConfig> = {}): FastifyInstance {
   }, async (request, reply) => {
     const current = await auth.authenticate(request.headers.authorization);
     if (!current || current.user.role !== "client") throw new ApiError(401, "UNAUTHORIZED", "Войдите в личный кабинет клиента.");
-    if (!config.enableDemoPayments) throw new ApiError(503, "PAYMENTS_NOT_CONFIGURED", "Онлайн-оплата временно недоступна.");
+    if (config.paymentRepository.provider === "rooms_demo" && !config.enableDemoPayments) {
+      throw new ApiError(503, "PAYMENTS_NOT_CONFIGURED", "Онлайн-оплата временно недоступна.");
+    }
     const payment = await config.paymentRepository.createIntent(current.user.id, request.params.bookingId);
     return reply.code(201).send(payment);
   });
@@ -1483,26 +2014,450 @@ export function buildApp(overrides: Partial<AppConfig> = {}): FastifyInstance {
   }, async (request) => {
     const current = await auth.authenticate(request.headers.authorization);
     if (!current || current.user.role !== "client") throw new ApiError(401, "UNAUTHORIZED", "Войдите в личный кабинет клиента.");
-    if (!config.enableDemoPayments) throw new ApiError(404, "DEMO_PAYMENTS_DISABLED", "Демонстрационный платёжный маршрут отключён.");
+    if (config.paymentRepository.provider !== "rooms_demo" || !config.enableDemoPayments) {
+      throw new ApiError(404, "DEMO_PAYMENTS_DISABLED", "Демонстрационный платёжный маршрут отключён.");
+    }
     const payment = await config.paymentRepository.completeDemo(current.user.id, request.params.paymentId);
     const booking = (await config.bookingRepository.listByClient(current.user.id, "all")).find((item) => item.id === payment.bookingId);
     if (!booking) throw new ApiError(409, "BOOKING_STATE_CHANGED", "Статус брони изменился. Обновите личный кабинет.");
-    await queueNotification("booking_prepayment_paid", async () => {
-      await notifications.rememberBookingRecipients(booking.id, booking.clientId, booking.venue.id);
-      await notifications.enqueueBookingClient(booking.id, {
-        eventKey: "booking_prepayment_paid",
-        title: `Предоплата по заявке ${booking.publicNumber} получена`,
-        body: `Оплачено ${payment.amount.toLocaleString("ru-RU")} руб. Остаток на месте: ${booking.money.remainingOnSite.toLocaleString("ru-RU")} руб.`,
-        dedupeKey: `prepayment-paid|${payment.paymentId}|client`,
+    await queuePaymentPaidNotifications(payment, booking);
+    return { payment, booking };
+  });
+
+  app.post<{ Body: SberWebhookBody }>("/v1/payments/webhooks/sber", {
+    schema: {
+      body: {
+        type: "object",
+        additionalProperties: false,
+        required: ["mdOrder", "orderNumber", "operation", "status"],
+        properties: {
+          mdOrder: { type: "string", minLength: 36, maxLength: 36 },
+          orderNumber: { type: "string", minLength: 1, maxLength: 36 },
+          operation: {
+            type: "string",
+            enum: ["created", "approved", "deposited", "reversed", "refunded", "declinedByTimeout", "subscriptionCreated"],
+          },
+          status: { type: "integer", minimum: 0, maximum: 1 },
+          additionalParams: { type: "object", additionalProperties: true },
+        },
+      },
+    },
+  }, async (request) => {
+    const result = await config.paymentRepository.processProviderCallback("sber", request.body);
+    const booking = (await config.bookingRepository.listByAdmin("all")).find((item) => item.id === result.bookingId);
+    if (booking && (result.outcome === "paid" || result.outcome === "already_paid")) {
+      await queuePaymentPaidNotifications(result.payment, booking);
+    }
+    if (booking && result.outcome === "refund_pending") {
+      await queueNotification("late_payment_refund", async () => {
+        await notifications.rememberBookingRecipients(booking.id, booking.clientId, booking.venue.id);
+        await notifications.enqueueBookingClient(booking.id, {
+          eventKey: "late_payment_refund",
+          title: `Оплата по заявке ${booking.publicNumber} поступила после освобождения времени`,
+          body: `Слот уже был освобождён. Возврат ${result.payment.amount.toLocaleString("ru-RU")} руб. поставлен в очередь.`,
+          dedupeKey: `late-payment-refund|${result.payment.paymentId}|client`,
+        });
       });
-      await notifications.enqueueBookingVenue(booking.id, {
-        eventKey: "booking_prepayment_paid",
-        title: `Заявка ${booking.publicNumber} оплачена`,
-        body: `Клиент внёс предоплату. Контакты клиента и детали брони доступны в кабинете Rooms.`,
-        dedupeKey: `prepayment-paid|${payment.paymentId}|venue`,
+    }
+    return { status: "ok" };
+  });
+
+  app.get("/v1/partner/bank-account", async (request) => {
+    const { actorId } = await requirePartnerVenue(request.headers.authorization);
+    const account = await config.financeRepository.getPartnerBankAccount(actorId);
+    if (!account) throw new ApiError(404, "PARTNER_VENUE_NOT_FOUND", "Для этого кабинета площадка ещё не назначена.");
+    return account;
+  });
+
+  app.put<{ Body: PartnerBankAccountBody }>("/v1/partner/bank-account", {
+    schema: {
+      body: {
+        type: "object",
+        additionalProperties: false,
+        required: ["bankName", "bik", "settlementAccount"],
+        properties: {
+          bankName: { type: "string", minLength: 2, maxLength: 150 },
+          bik: { type: "string", pattern: "^[0-9]{9}$" },
+          settlementAccount: { type: "string", pattern: "^[0-9]{20}$" },
+        },
+      },
+    },
+  }, async (request) => {
+    const { actorId } = await requirePartnerVenue(request.headers.authorization);
+    const account = await config.financeRepository.updatePartnerBankAccount(actorId, {
+      bankName: request.body.bankName.trim(),
+      bik: request.body.bik,
+      settlementAccount: request.body.settlementAccount,
+    });
+    if (!account) throw new ApiError(404, "PARTNER_VENUE_NOT_FOUND", "Для этого кабинета площадка ещё не назначена.");
+    return account;
+  });
+
+  app.get<{ Querystring: AccountingListQuerystring }>("/v1/partner/payouts", {
+    schema: {
+      querystring: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          status: { type: "string", enum: ["draft", "sent", "paid", "cancelled", "all"], default: "all" },
+          limit: { type: "integer", minimum: 1, maximum: 200, default: 80 },
+        },
+      },
+    },
+  }, async (request) => {
+    const { actorId } = await requirePartnerVenue(request.headers.authorization);
+    return config.financeRepository.listPayouts(
+      actorId,
+      "partner",
+      (request.query.status ?? "all") as FinancePayoutQueryStatus,
+      request.query.limit ?? 80,
+    );
+  });
+
+  app.get("/v1/accounting/overview", async (request) => {
+    await requireFinanceActor(request.headers.authorization);
+    return config.financeRepository.overview();
+  });
+
+  app.get<{ Querystring: AccountingListQuerystring }>("/v1/accounting/receipts", {
+    schema: {
+      querystring: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          status: { type: "string", enum: ["queued", "processing", "succeeded", "failed", "cancelled", "all"], default: "all" },
+          limit: { type: "integer", minimum: 1, maximum: 200, default: 80 },
+        },
+      },
+    },
+  }, async (request) => {
+    await requireFinanceActor(request.headers.authorization);
+    return config.financeRepository.listReceipts(
+      (request.query.status ?? "all") as FiscalReceiptQueryStatus,
+      request.query.limit ?? 80,
+    );
+  });
+
+  app.post<{ Params: ReceiptParams }>("/v1/accounting/receipts/:receiptId/retry", {
+    schema: {
+      params: {
+        type: "object",
+        additionalProperties: false,
+        required: ["receiptId"],
+        properties: { receiptId: { type: "string", minLength: 36, maxLength: 36 } },
+      },
+    },
+  }, async (request, reply) => {
+    const actor = await requireFinanceActor(request.headers.authorization);
+    const result = await config.receiptRepository.retry(request.params.receiptId, actor.id, actor.role);
+    if (result.outcome === "not_found") throw new ApiError(404, "FISCAL_RECEIPT_NOT_FOUND", "Чек не найден.");
+    if (result.outcome === "state_conflict") {
+      throw new ApiError(409, "FISCAL_RECEIPT_STATE_CHANGED", "Повторить можно только ошибочный или отменённый чек.");
+    }
+    return reply.code(202).send({ id: request.params.receiptId, status: result.status });
+  });
+
+  app.post<{ Params: ReceiptParams }>("/v1/accounting/receipts/:receiptId/cancel", {
+    schema: {
+      params: {
+        type: "object",
+        additionalProperties: false,
+        required: ["receiptId"],
+        properties: { receiptId: { type: "string", minLength: 36, maxLength: 36 } },
+      },
+    },
+  }, async (request) => {
+    const actor = await requireFinanceActor(request.headers.authorization);
+    const result = await config.receiptRepository.cancel(request.params.receiptId, actor.id, actor.role);
+    if (result.outcome === "not_found") throw new ApiError(404, "FISCAL_RECEIPT_NOT_FOUND", "Чек не найден.");
+    if (result.outcome === "state_conflict") {
+      throw new ApiError(409, "FISCAL_RECEIPT_STATE_CHANGED", "Отменить можно только чек в очереди или с ошибкой.");
+    }
+    return { id: request.params.receiptId, status: result.status };
+  });
+
+  app.get<{ Querystring: AccountingListQuerystring }>("/v1/accounting/bank-accounts", {
+    schema: {
+      querystring: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          status: { type: "string", enum: ["pending", "verified", "all"], default: "all" },
+          limit: { type: "integer", minimum: 1, maximum: 200, default: 80 },
+        },
+      },
+    },
+  }, async (request) => {
+    await requireFinanceActor(request.headers.authorization);
+    return config.financeRepository.listBankAccounts(
+      (request.query.status ?? "all") as BankAccountQueryStatus,
+      request.query.limit ?? 80,
+    );
+  });
+
+  app.post<{ Params: VenueFinanceParams }>("/v1/accounting/bank-accounts/:venueId/verify", {
+    schema: {
+      params: {
+        type: "object",
+        additionalProperties: false,
+        required: ["venueId"],
+        properties: { venueId: { type: "string", minLength: 36, maxLength: 36 } },
+      },
+    },
+  }, async (request) => {
+    const actor = await requireFinanceActor(request.headers.authorization);
+    const account = await config.financeRepository.verifyBankAccount(actor.id, actor.role, request.params.venueId);
+    if (!account) throw new ApiError(404, "BANK_ACCOUNT_NOT_FOUND", "Реквизиты площадки не найдены.");
+    return account;
+  });
+
+  app.get<{ Querystring: AccountingListQuerystring }>("/v1/accounting/refunds", {
+    schema: {
+      querystring: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          status: { type: "string", enum: ["refund_pending", "refunded", "failed", "all"], default: "all" },
+          limit: { type: "integer", minimum: 1, maximum: 200, default: 80 },
+        },
+      },
+    },
+  }, async (request) => {
+    await requireFinanceActor(request.headers.authorization);
+    return config.financeRepository.listRefunds(
+      (request.query.status ?? "all") as FinanceRefundQueryStatus,
+      request.query.limit ?? 80,
+    );
+  });
+
+  app.post<{ Params: RefundParams }>("/v1/accounting/refunds/:refundId/retry", {
+    schema: {
+      params: {
+        type: "object",
+        additionalProperties: false,
+        required: ["refundId"],
+        properties: { refundId: { type: "string", minLength: 36, maxLength: 36 } },
+      },
+    },
+  }, async (request, reply) => {
+    const actor = await requireFinanceActor(request.headers.authorization);
+    const result = await config.refundRepository.retry(request.params.refundId, actor.id, actor.role);
+    if (result.outcome === "not_found") throw new ApiError(404, "REFUND_NOT_FOUND", "Возврат не найден.");
+    if (result.outcome === "state_conflict") {
+      throw new ApiError(409, "REFUND_STATE_CHANGED", "Повторить можно только возврат со статусом ошибки.");
+    }
+    return reply.code(202).send({ id: request.params.refundId, status: result.status });
+  });
+
+  app.post<{ Params: RefundParams; Body: ProviderOperationBody }>("/v1/accounting/refunds/:refundId/complete", {
+    schema: {
+      params: {
+        type: "object",
+        additionalProperties: false,
+        required: ["refundId"],
+        properties: { refundId: { type: "string", minLength: 36, maxLength: 36 } },
+      },
+      body: {
+        type: "object",
+        additionalProperties: false,
+        properties: { providerOperationId: { type: "string", minLength: 3, maxLength: 200 } },
+      },
+    },
+  }, async (request) => {
+    const actor = await requireFinanceActor(request.headers.authorization);
+    const refund = await config.financeRepository.completeRefund(
+      actor.id,
+      actor.role,
+      request.params.refundId,
+      request.body?.providerOperationId,
+    );
+    if (!refund) throw new ApiError(404, "REFUND_NOT_FOUND", "Возврат не найден.");
+    await queueNotification("refund_completed", async () => {
+      await notifications.enqueueBookingClient(refund.bookingId, {
+        eventKey: "refund_completed",
+        title: `Возврат по заявке ${refund.publicNumber} выполнен`,
+        body: `Возвращено ${refund.amount.toLocaleString("ru-RU")} руб. Срок зачисления зависит от банка клиента.`,
+        dedupeKey: `refund-completed|${refund.id}|${refund.completedAt}`,
       });
     });
-    return { payment, booking };
+    return refund;
+  });
+
+  app.get("/v1/accounting/payout-candidates", async (request) => {
+    await requireFinanceActor(request.headers.authorization);
+    return config.financeRepository.listPayoutCandidates();
+  });
+
+  app.get<{ Querystring: AccountingListQuerystring }>("/v1/accounting/payouts", {
+    schema: {
+      querystring: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          status: { type: "string", enum: ["draft", "sent", "paid", "cancelled", "all"], default: "all" },
+          limit: { type: "integer", minimum: 1, maximum: 200, default: 80 },
+        },
+      },
+    },
+  }, async (request) => {
+    const actor = await requireFinanceActor(request.headers.authorization);
+    return config.financeRepository.listPayouts(
+      actor.id,
+      actor.role,
+      (request.query.status ?? "all") as FinancePayoutQueryStatus,
+      request.query.limit ?? 80,
+    );
+  });
+
+  app.post<{ Body: CreatePayoutsBody }>("/v1/accounting/payouts", {
+    schema: {
+      body: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          bookingIds: {
+            type: "array",
+            minItems: 1,
+            maxItems: 200,
+            uniqueItems: true,
+            items: { type: "string", minLength: 36, maxLength: 36 },
+          },
+          scheduledFor: { type: "string", pattern: "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" },
+        },
+      },
+    },
+  }, async (request, reply) => {
+    const actor = await requireFinanceActor(request.headers.authorization);
+    const scheduledFor = request.body?.scheduledFor;
+    if (scheduledFor && !isIsoDate(scheduledFor)) throw new ApiError(400, "INVALID_DATE", "Дата выплаты должна существовать.");
+    const payouts = await config.financeRepository.createPayouts(actor.id, actor.role, request.body?.bookingIds, scheduledFor);
+    await Promise.all(payouts.map((payout) => queueNotification("payout_sent", () => notifications.enqueueVenue(payout.venueId, {
+      eventKey: "payout_sent",
+      title: `Выплата ${payout.amount.toLocaleString("ru-RU")} руб. направлена`,
+      body: `В выплату вошло бронирований: ${payout.items.length}. Статус можно отслеживать в кабинете партнёра.`,
+      dedupeKey: `payout-sent|${payout.id}`,
+    }))));
+    return reply.code(201).send(payouts);
+  });
+
+  app.post<{ Params: PayoutParams; Body: ProviderOperationBody }>("/v1/accounting/payouts/:payoutId/complete", {
+    schema: {
+      params: {
+        type: "object",
+        additionalProperties: false,
+        required: ["payoutId"],
+        properties: { payoutId: { type: "string", minLength: 36, maxLength: 36 } },
+      },
+      body: {
+        type: "object",
+        additionalProperties: false,
+        properties: { providerOperationId: { type: "string", minLength: 3, maxLength: 200 } },
+      },
+    },
+  }, async (request) => {
+    const actor = await requireFinanceActor(request.headers.authorization);
+    const payout = await config.financeRepository.completePayout(
+      actor.id,
+      actor.role,
+      request.params.payoutId,
+      request.body?.providerOperationId,
+    );
+    if (!payout) throw new ApiError(404, "PAYOUT_NOT_FOUND", "Выплата не найдена.");
+    await queueNotification("payout_completed", () => notifications.enqueueVenue(payout.venueId, {
+      eventKey: "payout_completed",
+      title: `Выплата ${payout.amount.toLocaleString("ru-RU")} руб. выполнена`,
+      body: `Средства направлены на расчётный счёт •••• ${payout.accountLastFour ?? "не указан"}.`,
+      dedupeKey: `payout-completed|${payout.id}|${payout.paidAt}`,
+    }));
+    return payout;
+  });
+
+  app.get<{ Querystring: BookingQuery }>("/v1/admin/bookings", {
+    schema: {
+      querystring: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          statusGroup: { type: "string", enum: ["active", "completed", "cancelled", "all"] },
+        },
+      },
+    },
+  }, async (request) => {
+    await requireAdmin(request.headers.authorization);
+    return config.bookingRepository.listByAdmin(request.query.statusGroup ?? "all");
+  });
+
+  app.post<{ Params: BookingParams; Body: BookingCancelBody }>("/v1/admin/bookings/:bookingId/cancel", {
+    schema: {
+      params: {
+        type: "object",
+        additionalProperties: false,
+        required: ["bookingId"],
+        properties: { bookingId: { type: "string", minLength: 36, maxLength: 36 } },
+      },
+      body: {
+        type: "object",
+        additionalProperties: false,
+        required: ["reason"],
+        properties: { reason: { type: "string", minLength: 3, maxLength: 1000 } },
+      },
+    },
+  }, async (request) => {
+    const admin = await requireAdmin(request.headers.authorization);
+    const booking = await config.bookingRepository.cancelByAdmin(admin.id, request.params.bookingId, request.body.reason.trim());
+    if (!booking) throw new ApiError(404, "BOOKING_NOT_FOUND", "Бронь не найдена в очереди Rooms.");
+    await queueNotification("booking_cancelled_by_admin", async () => {
+      await notifications.rememberBookingRecipients(booking.id, booking.clientId, booking.venue.id);
+      const event = {
+        eventKey: "booking_cancelled_by_admin",
+        title: `Rooms отменил ${booking.publicNumber}`,
+        body: `Причина: ${booking.cancellationReason}`,
+        dedupeKey: `booking-cancelled-admin|${booking.id}`,
+      };
+      await Promise.all([
+        notifications.enqueueBookingClient(booking.id, event),
+        notifications.enqueueBookingVenue(booking.id, event),
+      ]);
+    });
+    return booking;
+  });
+
+  app.get<{ Querystring: SupportQuerystring }>("/v1/admin/support", {
+    schema: {
+      querystring: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          status: { type: "string", enum: ["open", "working", "closed", "all"] },
+          limit: { type: "integer", minimum: 1, maximum: 200, default: 80 },
+        },
+      },
+    },
+  }, async (request) => {
+    const admin = await requireAdmin(request.headers.authorization);
+    return config.supportRepository.list(admin.id, "admin", request.query.status ?? "all", request.query.limit ?? 80);
+  });
+
+  app.patch<{ Params: SupportParams; Body: SupportStatusBody }>("/v1/admin/support/:supportId", {
+    schema: {
+      params: {
+        type: "object",
+        additionalProperties: false,
+        required: ["supportId"],
+        properties: { supportId: { type: "string", minLength: 36, maxLength: 36 } },
+      },
+      body: {
+        type: "object",
+        additionalProperties: false,
+        required: ["status"],
+        properties: { status: { type: "string", enum: ["open", "working", "closed"] } },
+      },
+    },
+  }, async (request) => {
+    const admin = await requireAdmin(request.headers.authorization);
+    const record = await config.supportRepository.setStatus(admin.id, request.params.supportId, request.body.status);
+    if (!record) throw new ApiError(404, "SUPPORT_CASE_NOT_FOUND", "Обращение не найдено.");
+    return record;
   });
 
   app.get<{ Querystring: NotificationDeliveryQuerystring }>("/v1/admin/notification-deliveries", {
@@ -1525,6 +2480,58 @@ export function buildApp(overrides: Partial<AppConfig> = {}): FastifyInstance {
       limit: request.query.limit ?? 80,
     };
     return notifications.listAll(query);
+  });
+
+  app.get<{ Querystring: ReviewQuerystring }>("/v1/admin/reviews", {
+    schema: {
+      querystring: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          status: { type: "string", enum: ["pending", "approved", "rejected", "all"], default: "all" },
+          limit: { type: "integer", minimum: 1, maximum: 200, default: 80 },
+        },
+      },
+    },
+  }, async (request) => {
+    await requireAdmin(request.headers.authorization);
+    return config.reviewRepository.listAdmin(request.query.status ?? "all", request.query.limit ?? 80);
+  });
+
+  app.patch<{ Params: ReviewParams; Body: ReviewDecisionBody }>("/v1/admin/reviews/:reviewId", {
+    schema: {
+      params: reviewParamsSchema,
+      body: {
+        type: "object",
+        additionalProperties: false,
+        required: ["status"],
+        properties: {
+          status: { type: "string", enum: ["pending", "approved", "rejected"] },
+          comment: { type: "string", maxLength: 1000 },
+        },
+      },
+    },
+  }, async (request) => {
+    const admin = await requireAdmin(request.headers.authorization);
+    const comment = request.body.comment?.trim() ?? "";
+    if (request.body.status === "rejected" && comment.length < 5) {
+      throw new ApiError(400, "REVIEW_COMMENT_REQUIRED", "Укажите причину отклонения отзыва.");
+    }
+    const review = await config.reviewRepository.decide(request.params.reviewId, admin.id, request.body.status, comment);
+    if (!review) throw new ApiError(404, "REVIEW_NOT_FOUND", "Отзыв не найден.");
+    await queueNotification("review_moderated", async () => {
+      await notifications.enqueueBookingClient(review.bookingId, {
+        eventKey: "review_moderated",
+        title: request.body.status === "approved" ? "Отзыв опубликован" : request.body.status === "rejected" ? "Отзыв нужно изменить" : "Отзыв возвращён на проверку",
+        body: request.body.status === "approved"
+          ? `Отзыв о «${review.roomTitle}» появился в карточке помещения.`
+          : request.body.status === "rejected"
+            ? `Rooms отклонил отзыв. Причина: ${comment}`
+            : `Отзыв о «${review.roomTitle}» снова ожидает проверки Rooms.`,
+        dedupeKey: `review-moderated|${review.id}|${request.body.status}|${review.updatedAt}`,
+      });
+    });
+    return review;
   });
 
   app.get<{ Querystring: AdminModerationQuerystring }>("/v1/admin/moderation", {
@@ -1626,6 +2633,15 @@ export function buildApp(overrides: Partial<AppConfig> = {}): FastifyInstance {
       },
     },
   }, async (request, reply) => uploadPartnerPhoto(request, reply, request.params.roomId));
+
+  app.patch<{ Body: PartnerPhotoOrderBody }>("/v1/partner/photos/order", {
+    schema: { body: partnerPhotoOrderBodySchema },
+  }, async (request, reply) => {
+    const { actorId, venueId } = await requirePartnerVenue(request.headers.authorization);
+    const photos = await config.partnerCatalogRepository.reorderPhotos(venueId, actorId, request.body.photoIds);
+    if (!photos) throw new ApiError(404, "PARTNER_PHOTO_NOT_FOUND", "Фотография не найдена в кабинете этой площадки.");
+    return reply.code(202).send({ status: "review", photos });
+  });
 
   app.delete<{ Params: PartnerPhotoParams }>("/v1/partner/photos/:photoId", {
     schema: {
@@ -1818,6 +2834,79 @@ export function buildApp(overrides: Partial<AppConfig> = {}): FastifyInstance {
     return config.bookingRepository.listByPartner(current.user.id, request.query.statusGroup ?? "all");
   });
 
+  app.get<{ Querystring: SupportQuerystring }>("/v1/partner/support", {
+    schema: {
+      querystring: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          status: { type: "string", enum: ["open", "working", "closed", "all"] },
+          limit: { type: "integer", minimum: 1, maximum: 200, default: 80 },
+        },
+      },
+    },
+  }, async (request) => {
+    const current = await auth.authenticate(request.headers.authorization);
+    if (!current || current.user.role !== "partner") throw new ApiError(401, "UNAUTHORIZED", "Войдите в кабинет партнёра.");
+    return config.supportRepository.list(current.user.id, "partner", request.query.status ?? "all", request.query.limit ?? 80);
+  });
+
+  app.get("/v1/partner/reviews", async (request) => {
+    const current = await auth.authenticate(request.headers.authorization);
+    if (!current || current.user.role !== "partner") throw new ApiError(401, "UNAUTHORIZED", "Войдите в кабинет партнёра.");
+    return config.reviewRepository.listByPartner(current.user.id);
+  });
+
+  app.patch<{ Params: ReviewParams; Body: ReviewReplyBody }>("/v1/partner/reviews/:reviewId/reply", {
+    schema: {
+      params: reviewParamsSchema,
+      body: {
+        type: "object",
+        additionalProperties: false,
+        required: ["body"],
+        properties: { body: { type: "string", minLength: 3, maxLength: 1000 } },
+      },
+    },
+  }, async (request) => {
+    const current = await auth.authenticate(request.headers.authorization);
+    if (!current || current.user.role !== "partner") throw new ApiError(401, "UNAUTHORIZED", "Войдите в кабинет партнёра.");
+    const review = await config.reviewRepository.reply(current.user.id, request.params.reviewId, request.body.body.trim());
+    if (!review) throw new ApiError(404, "REVIEW_NOT_FOUND", "Отзыв не найден в кабинете этой площадки.");
+    await queueNotification("review_partner_replied", () => notifications.enqueueBookingClient(review.bookingId, {
+      eventKey: "review_partner_replied",
+      title: `${review.venueTitle} ответил на отзыв`,
+      body: `Площадка ответила на ваш отзыв о «${review.roomTitle}».`,
+      dedupeKey: `review-reply|${review.id}|${review.updatedAt}`,
+    }));
+    return review;
+  });
+
+  app.post<{ Params: BookingParams }>("/v1/partner/bookings/:bookingId/complete", {
+    schema: {
+      params: {
+        type: "object",
+        additionalProperties: false,
+        required: ["bookingId"],
+        properties: { bookingId: { type: "string", minLength: 36, maxLength: 36 } },
+      },
+    },
+  }, async (request) => {
+    const current = await auth.authenticate(request.headers.authorization);
+    if (!current || current.user.role !== "partner") throw new ApiError(401, "UNAUTHORIZED", "Войдите в кабинет партнёра.");
+    const booking = await config.bookingRepository.completeByPartner(current.user.id, request.params.bookingId);
+    if (!booking) throw new ApiError(404, "BOOKING_NOT_FOUND", "Заявка не найдена в очереди этой площадки.");
+    await queueNotification("booking_completed_by_partner", async () => {
+      await notifications.rememberBookingRecipients(booking.id, booking.clientId, booking.venue.id);
+      await notifications.enqueueBookingClient(booking.id, {
+        eventKey: "booking_completed_by_partner",
+        title: `Посещение ${booking.publicNumber} завершено`,
+        body: `Теперь можно оставить отзыв о «${booking.rooms.find((room) => room.isPrimary)?.title ?? booking.rooms[0]?.title ?? "помещении"}».`,
+        dedupeKey: `booking-completed-partner|${booking.id}`,
+      });
+    });
+    return booking;
+  });
+
   app.post<{ Params: BookingParams; Body: PartnerBookingProposalBody }>("/v1/partner/bookings/:bookingId/proposal", {
     schema: {
       params: {
@@ -1977,7 +3066,7 @@ export function buildApp(overrides: Partial<AppConfig> = {}): FastifyInstance {
       },
     },
   }, async (request): Promise<PublicReviewPage> => {
-    const reviews = await config.repository.listRoomReviews(request.params.roomId);
+    const reviews = await config.reviewRepository.listPublicRoom(request.params.roomId);
     if (!reviews) throw new ApiError(404, "ROOM_NOT_FOUND", "Помещение не найдено.");
     return { items: reviews, nextCursor: null, hasMore: false };
   });

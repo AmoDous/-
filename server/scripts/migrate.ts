@@ -12,6 +12,13 @@ const migrations = [
   { name: "0004_auth_security", url: new URL("../../docs/migrations/0004_auth_security.sql", import.meta.url) },
   { name: "0005_notification_worker", url: new URL("../../docs/migrations/0005_notification_worker.sql", import.meta.url) },
   { name: "0006_partner_photos", url: new URL("../../docs/migrations/0006_partner_photos.sql", import.meta.url) },
+  { name: "0007_reviews", url: new URL("../../docs/migrations/0007_reviews.sql", import.meta.url) },
+  { name: "0008_support_and_admin_queue", url: new URL("../../docs/migrations/0008_support_and_admin_queue.sql", import.meta.url) },
+  { name: "0009_finance_operations", url: new URL("../../docs/migrations/0009_finance_operations.sql", import.meta.url) },
+  { name: "0010_payout_destination_snapshot", url: new URL("../../docs/migrations/0010_payout_destination_snapshot.sql", import.meta.url) },
+  { name: "0011_payment_webhooks_and_receipts", url: new URL("../../docs/migrations/0011_payment_webhooks_and_receipts.sql", import.meta.url) },
+  { name: "0012_fiscal_receipt_worker", url: new URL("../../docs/migrations/0012_fiscal_receipt_worker.sql", import.meta.url) },
+  { name: "0013_automatic_refund_worker", url: new URL("../../docs/migrations/0013_automatic_refund_worker.sql", import.meta.url) },
 ];
 const pool = new Pool({ ...postgresPoolConfig(), max: 1, application_name: "rooms-migrate" });
 const client = await pool.connect();

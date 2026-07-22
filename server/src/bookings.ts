@@ -6,6 +6,7 @@ import type { PaymentMethod, PublicationStatus } from "./types.js";
 export type BookingStatus = "pending" | "proposed" | "awaiting_payment" | "paid" | "expired" | "cancelled" | "visited" | "completed";
 export type BookingStatusGroup = "active" | "completed" | "cancelled" | "all";
 export type PartnerBookingStatusGroup = "new" | "payment" | "booked" | "history" | "all";
+export type BookingPaymentStatus = "unpaid" | "pending" | "paid" | "refund_pending" | "refunded";
 
 export interface BookingVenue {
   id: string;
@@ -94,6 +95,7 @@ export interface BookingRecord {
   money: BookingMoney;
   proposal: BookingTimeProposal | null;
   unreadMessages: number;
+  paymentStatus: BookingPaymentStatus;
   paymentHoldExpiresAt: string | null;
   createdAt: string;
 }
@@ -135,9 +137,15 @@ export interface BookingRepository {
   create(input: BookingCreateInput): Promise<BookingRecord>;
   listByClient(clientId: string, group: BookingStatusGroup): Promise<BookingRecord[]>;
   findByClient(clientId: string, bookingId: string): Promise<BookingRecord | null>;
+  listByAdmin(group: BookingStatusGroup): Promise<BookingRecord[]>;
+  findByAdmin(bookingId: string): Promise<BookingRecord | null>;
   getPartnerVenue(partnerId: string): Promise<BookingVenue | null>;
   listByPartner(partnerId: string, group: PartnerBookingStatusGroup): Promise<BookingRecord[]>;
   findByPartner(partnerId: string, bookingId: string): Promise<BookingRecord | null>;
+  completeByClient(clientId: string, bookingId: string): Promise<BookingRecord | null>;
+  completeByPartner(partnerId: string, bookingId: string): Promise<BookingRecord | null>;
+  cancelByClient(clientId: string, bookingId: string, reason: string): Promise<BookingRecord | null>;
+  cancelByAdmin(adminId: string, bookingId: string, reason: string): Promise<BookingRecord | null>;
   confirmByPartner(partnerId: string, bookingId: string): Promise<BookingRecord | null>;
   rejectByPartner(partnerId: string, bookingId: string, reason: string): Promise<BookingRecord | null>;
   proposeTimeByPartner(partnerId: string, bookingId: string, input: BookingProposalInput): Promise<BookingRecord | null>;
@@ -150,7 +158,10 @@ export interface BookingRepository {
 export class BookingActionError extends Error {
   readonly statusCode = 409;
 
-  constructor(readonly code: "SLOT_CONFLICT" | "BOOKING_STATE_CHANGED" | "PROPOSAL_STALE" | "CHAT_CLOSED", message: string) {
+  constructor(
+    readonly code: "SLOT_CONFLICT" | "BOOKING_STATE_CHANGED" | "BOOKING_NOT_FINISHED" | "PROPOSAL_STALE" | "CHAT_CLOSED",
+    message: string,
+  ) {
     super(message);
   }
 }
@@ -209,6 +220,7 @@ function newRecord(input: BookingCreateInput): BookingRecord {
     money: structuredClone(input.money),
     proposal: null,
     unreadMessages: 0,
+    paymentStatus: "unpaid",
     paymentHoldExpiresAt: null,
     createdAt,
   };
@@ -265,6 +277,19 @@ export class MemoryBookingRepository implements BookingRepository {
     return booking ? this.viewFor(booking, "client") : null;
   }
 
+  async listByAdmin(group: BookingStatusGroup): Promise<BookingRecord[]> {
+    this.releaseExpired();
+    return this.bookings
+      .filter((booking) => statusInGroup(booking.status, group))
+      .map((booking) => this.viewFor(booking, "client"));
+  }
+
+  async findByAdmin(bookingId: string): Promise<BookingRecord | null> {
+    this.releaseExpired();
+    const booking = this.bookings.find((item) => item.id === bookingId);
+    return booking ? this.viewFor(booking, "client") : null;
+  }
+
   async getPartnerVenue(partnerId: string): Promise<BookingVenue | null> {
     const venue = this.partnerVenues.get(partnerId);
     return venue ? structuredClone(venue) : null;
@@ -283,6 +308,26 @@ export class MemoryBookingRepository implements BookingRepository {
     this.releaseExpired();
     const booking = this.partnerBooking(partnerId, bookingId);
     return booking ? partnerView(this.viewFor(booking, "partner")) : null;
+  }
+
+  async completeByClient(clientId: string, bookingId: string): Promise<BookingRecord | null> {
+    const booking = this.bookings.find((item) => item.id === bookingId && item.clientId === clientId);
+    return booking ? this.completeBooking(booking, "client") : null;
+  }
+
+  async completeByPartner(partnerId: string, bookingId: string): Promise<BookingRecord | null> {
+    const booking = this.partnerBooking(partnerId, bookingId);
+    return booking ? this.completeBooking(booking, "partner") : null;
+  }
+
+  async cancelByClient(clientId: string, bookingId: string, reason: string): Promise<BookingRecord | null> {
+    const booking = this.bookings.find((item) => item.id === bookingId && item.clientId === clientId);
+    return booking ? this.cancelBooking(booking, "client", reason) : null;
+  }
+
+  async cancelByAdmin(_adminId: string, bookingId: string, reason: string): Promise<BookingRecord | null> {
+    const booking = this.bookings.find((item) => item.id === bookingId);
+    return booking ? this.cancelBooking(booking, "admin", reason) : null;
   }
 
   async confirmByPartner(partnerId: string, bookingId: string): Promise<BookingRecord | null> {
@@ -304,6 +349,7 @@ export class MemoryBookingRepository implements BookingRepository {
     }
     const expiresAt = this.now().getTime() + 15 * 60_000;
     booking.status = "awaiting_payment";
+    booking.paymentStatus = "pending";
     booking.paymentHoldExpiresAt = new Date(expiresAt).toISOString();
     for (const room of booking.rooms) {
       const buffer = room.bufferMinutes * 60_000;
@@ -320,6 +366,7 @@ export class MemoryBookingRepository implements BookingRepository {
       throw new BookingActionError("BOOKING_STATE_CHANGED", "Эту бронь уже нельзя отклонить из очереди.");
     }
     booking.status = "cancelled";
+    booking.paymentStatus = "unpaid";
     booking.paymentHoldExpiresAt = null;
     booking.cancellationReason = _reason;
     booking.cancelledBy = "partner";
@@ -381,6 +428,7 @@ export class MemoryBookingRepository implements BookingRepository {
     booking.endsAt = proposal.endsAt;
     booking.money = structuredClone(proposal.money);
     booking.status = "awaiting_payment";
+    booking.paymentStatus = "pending";
     booking.paymentHoldExpiresAt = new Date(expiresAt).toISOString();
     booking.proposal = null;
     return this.viewFor(booking, "client");
@@ -440,6 +488,7 @@ export class MemoryBookingRepository implements BookingRepository {
     if (booking.status === "paid") return structuredClone(booking);
     if (booking.status !== "awaiting_payment") return structuredClone(booking);
     booking.status = "paid";
+    booking.paymentStatus = "paid";
     booking.paymentHoldExpiresAt = null;
     return structuredClone(booking);
   }
@@ -471,6 +520,38 @@ export class MemoryBookingRepository implements BookingRepository {
       : this.partnerBooking(userId, bookingId);
   }
 
+  private completeBooking(booking: BookingRecord, role: BookingParticipantRole): BookingRecord {
+    if (["visited", "completed"].includes(booking.status)) {
+      return role === "partner" ? partnerView(this.viewFor(booking, role)) : this.viewFor(booking, role);
+    }
+    if (booking.status !== "paid") {
+      throw new BookingActionError("BOOKING_STATE_CHANGED", "Завершить можно только оплаченную бронь.");
+    }
+    if (new Date(booking.endsAt).getTime() > this.now().getTime()) {
+      throw new BookingActionError("BOOKING_NOT_FINISHED", "Завершить бронь можно после окончания мероприятия.");
+    }
+    booking.status = role === "client" ? "completed" : "visited";
+    for (const reservation of this.reservations) if (reservation.bookingId === booking.id) reservation.active = false;
+    return role === "partner" ? partnerView(this.viewFor(booking, role)) : this.viewFor(booking, role);
+  }
+
+  private cancelBooking(booking: BookingRecord, actor: "client" | "admin", reason: string): BookingRecord {
+    this.releaseExpired();
+    if (booking.status === "cancelled") return this.viewFor(booking, "client");
+    if (!["pending", "proposed", "awaiting_payment", "paid"].includes(booking.status)) {
+      throw new BookingActionError("BOOKING_STATE_CHANGED", "Эту бронь уже нельзя отменить.");
+    }
+    const refundRequired = booking.status === "paid" || booking.paymentStatus === "paid";
+    booking.status = "cancelled";
+    booking.cancellationReason = reason;
+    booking.cancelledBy = actor;
+    booking.paymentStatus = refundRequired ? "refund_pending" : "unpaid";
+    booking.paymentHoldExpiresAt = null;
+    booking.proposal = null;
+    for (const reservation of this.reservations) if (reservation.bookingId === booking.id) reservation.active = false;
+    return this.viewFor(booking, "client");
+  }
+
   private viewFor(booking: BookingRecord, role: BookingParticipantRole): BookingRecord {
     const messages = this.messages.get(booking.id) ?? [];
     const unreadMessages = messages.filter((message) => message.senderRole !== role && !message.readBy.includes(role)).length;
@@ -487,6 +568,7 @@ export class MemoryBookingRepository implements BookingRepository {
     for (const booking of this.bookings) {
       if (booking.status !== "awaiting_payment" || !booking.paymentHoldExpiresAt || new Date(booking.paymentHoldExpiresAt).getTime() > now) continue;
       booking.status = "expired";
+      booking.paymentStatus = "unpaid";
       booking.paymentHoldExpiresAt = null;
       for (const reservation of this.reservations) if (reservation.bookingId === booking.id) reservation.active = false;
     }
@@ -516,6 +598,7 @@ interface BookingRow extends QueryResultRow {
   prepayment: string | number;
   remaining_on_site: string | number;
   payment_hold_expires_at: Date | string | null;
+  payment_status: BookingPaymentStatus;
   created_at: Date | string;
   venue_id: string;
   venue_slug: string;
@@ -592,6 +675,25 @@ interface BookingProposalRow extends QueryResultRow {
   responded_at: Date | string | null;
   created_at: Date | string;
 }
+
+const BOOKING_PAYMENT_STATUS_SELECT = `case
+  when exists (
+    select 1 from refunds refund
+    join payment_transactions payment on payment.id = refund.payment_id
+    where payment.booking_id = b.id and refund.status = 'refunded'
+  ) then 'refunded'
+  when exists (
+    select 1 from refunds refund
+    join payment_transactions payment on payment.id = refund.payment_id
+    where payment.booking_id = b.id and refund.status in ('refund_pending','failed')
+  ) then 'refund_pending'
+  when exists (
+    select 1 from payment_transactions payment
+    where payment.booking_id = b.id and payment.status = 'paid'
+  ) then 'paid'
+  when b.status = 'awaiting_payment' then 'pending'
+  else 'unpaid'
+end as payment_status`;
 
 interface BookingMessageRow extends QueryResultRow {
   id: string;
@@ -680,6 +782,18 @@ export class PostgresBookingRepository implements BookingRepository {
     return records[0] ?? null;
   }
 
+  async listByAdmin(group: BookingStatusGroup): Promise<BookingRecord[]> {
+    await this.releaseExpired(this.pool);
+    const rows = await this.adminRows(null);
+    return this.hydrate(rows.filter((row) => statusInGroup(row.status, group)));
+  }
+
+  async findByAdmin(bookingId: string): Promise<BookingRecord | null> {
+    await this.releaseExpired(this.pool);
+    const records = await this.hydrate(await this.adminRows(bookingId));
+    return records[0] ?? null;
+  }
+
   async getPartnerVenue(partnerId: string): Promise<BookingVenue | null> {
     const result = await this.pool.query<PartnerVenueRow>(`/* rooms:partner-venue */
       select v.id::text, v.slug, v.title, v.city, v.address, v.payment_methods,
@@ -713,6 +827,22 @@ export class PostgresBookingRepository implements BookingRepository {
   async findByPartner(partnerId: string, bookingId: string): Promise<BookingRecord | null> {
     await this.releaseExpired(this.pool);
     return this.findPartnerBooking(partnerId, bookingId);
+  }
+
+  completeByClient(clientId: string, bookingId: string): Promise<BookingRecord | null> {
+    return this.completeBooking(clientId, bookingId, "client");
+  }
+
+  completeByPartner(partnerId: string, bookingId: string): Promise<BookingRecord | null> {
+    return this.completeBooking(partnerId, bookingId, "partner");
+  }
+
+  cancelByClient(clientId: string, bookingId: string, reason: string): Promise<BookingRecord | null> {
+    return this.cancelBooking(clientId, bookingId, "client", reason);
+  }
+
+  cancelByAdmin(adminId: string, bookingId: string, reason: string): Promise<BookingRecord | null> {
+    return this.cancelBooking(adminId, bookingId, "admin", reason);
   }
 
   async confirmByPartner(partnerId: string, bookingId: string): Promise<BookingRecord | null> {
@@ -1031,6 +1161,163 @@ export class PostgresBookingRepository implements BookingRepository {
     return messageFromRow(result.rows[0]!);
   }
 
+  private async cancelBooking(
+    actorId: string,
+    bookingId: string,
+    actorRole: "client" | "admin",
+    reason: string,
+  ): Promise<BookingRecord | null> {
+    const client = await this.pool.connect();
+    try {
+      await client.query("begin");
+      await this.releaseExpired(client);
+      const result = await client.query<PartnerActionBookingRow>(`/* rooms:lock-booking-cancellation */
+        select b.id::text, b.status, b.starts_at, b.ends_at
+        from bookings b
+        where b.id = $2::uuid
+          and ($3::text = 'admin' or ($3::text = 'client' and b.client_id = $1::uuid))
+        for update of b
+      `, [actorId, bookingId, actorRole]);
+      const booking = result.rows[0];
+      if (!booking) {
+        await client.query("rollback");
+        return null;
+      }
+      if (booking.status !== "cancelled") {
+        if (!["pending", "proposed", "awaiting_payment", "paid"].includes(booking.status)) {
+          throw new BookingActionError("BOOKING_STATE_CHANGED", "Эту бронь уже нельзя отменить.");
+        }
+        await client.query(`
+          update room_reservations set active = false
+          where booking_id = $1::uuid and active
+        `, [bookingId]);
+        await client.query(`
+          update booking_time_proposals set status = 'superseded', responded_at = now()
+          where booking_id = $1::uuid and status = 'pending'
+        `, [bookingId]);
+        await client.query(`
+          update bookings set status = 'cancelled', payment_hold_expires_at = null,
+            cancellation_reason = $2, cancelled_by = $3, updated_at = now()
+          where id = $1::uuid
+        `, [bookingId, reason, actorRole]);
+        if (booking.status === "paid") {
+          await client.query(`/* rooms:create-cancellation-refund */
+            insert into refunds (payment_id, amount, status, reason, requested_by)
+            select payment.id, payment.amount, 'refund_pending', $2, $3::uuid
+            from payment_transactions payment
+            where payment.booking_id = $1::uuid and payment.status = 'paid'
+              and not exists (select 1 from refunds refund where refund.payment_id = payment.id)
+            order by payment.paid_at desc nulls last, payment.created_at desc
+            limit 1
+          `, [bookingId, reason, actorId]);
+        }
+        await client.query(`
+          insert into booking_status_history (
+            booking_id, from_status, to_status, actor_id, actor_role, title, details
+          ) values (
+            $1::uuid,$2::booking_status,'cancelled',$3::uuid,$4::user_role,'Бронь отменена',$5
+          )
+        `, [bookingId, booking.status, actorId, actorRole, reason]);
+        await client.query(`insert into audit_log (
+          actor_id, actor_role, action, entity_type, entity_id, before_data, after_data
+        ) values ($1::uuid,$2::user_role,'booking_cancelled','booking',$3,$4::jsonb,$5::jsonb)`, [
+          actorId,
+          actorRole,
+          bookingId,
+          JSON.stringify({ status: booking.status }),
+          JSON.stringify({
+            status: "cancelled",
+            reason,
+            refundRequired: booking.status === "paid",
+          }),
+        ]);
+      }
+      await client.query("commit");
+    } catch (error) {
+      await client.query("rollback");
+      throw error;
+    } finally {
+      client.release();
+    }
+    return actorRole === "client" ? this.findByClient(actorId, bookingId) : this.findByAdmin(bookingId);
+  }
+
+  private async completeBooking(userId: string, bookingId: string, role: BookingParticipantRole): Promise<BookingRecord | null> {
+    const client = await this.pool.connect();
+    try {
+      await client.query("begin");
+      const result = await client.query<PartnerActionBookingRow>(`/* rooms:complete-booking */
+        select booking.id::text, booking.status, booking.starts_at, booking.ends_at
+        from bookings booking
+        where booking.id = $2::uuid
+          and (
+            ($3 = 'client' and booking.client_id = $1::uuid)
+            or ($3 = 'partner' and exists (
+              select 1 from venue_members member
+              where member.venue_id = booking.venue_id and member.user_id = $1::uuid
+            ))
+          )
+        for update of booking
+      `, [userId, bookingId, role]);
+      const booking = result.rows[0];
+      if (!booking) {
+        await client.query("rollback");
+        return null;
+      }
+      if (!["visited", "completed"].includes(booking.status)) {
+        if (booking.status !== "paid") {
+          throw new BookingActionError("BOOKING_STATE_CHANGED", "Завершить можно только оплаченную бронь.");
+        }
+        if (new Date(booking.ends_at).getTime() > Date.now()) {
+          throw new BookingActionError("BOOKING_NOT_FINISHED", "Завершить бронь можно после окончания мероприятия.");
+        }
+        const nextStatus = role === "client" ? "completed" : "visited";
+        await client.query(`update bookings set status = $2::booking_status, completed_at = now(), updated_at = now()
+          where id = $1::uuid`, [bookingId, nextStatus]);
+        await client.query("update room_reservations set active = false where booking_id = $1::uuid and active", [bookingId]);
+        await client.query(`insert into booking_status_history (
+          booking_id, from_status, to_status, actor_id, actor_role, title, details
+        ) values ($1::uuid,$2::booking_status,$3::booking_status,$4::uuid,$5::user_role,$6,$7)`, [
+          bookingId,
+          booking.status,
+          nextStatus,
+          userId,
+          role,
+          role === "client" ? "Клиент подтвердил завершение" : "Площадка отметила посещение",
+          "Посещение завершено, клиент может оставить отзыв",
+        ]);
+      }
+      await client.query("commit");
+    } catch (error) {
+      await client.query("rollback");
+      throw error;
+    } finally {
+      client.release();
+    }
+    return role === "client" ? this.findByClient(userId, bookingId) : this.findByPartner(userId, bookingId);
+  }
+
+  private async adminRows(bookingId: string | null): Promise<BookingRow[]> {
+    const result = await this.pool.query<BookingRow>(`/* rooms:list-admin-bookings */
+      select b.id::text, b.public_number, b.status, b.client_id::text, b.client_name,
+        b.client_phone, b.client_email::text, b.starts_at, b.ends_at, b.guests,
+        b.event_type, b.event_name, b.on_site_payment_method, b.comment, b.cancellation_reason, b.cancelled_by,
+        b.room_total, b.service_total, b.total, b.prepayment, b.remaining_on_site,
+        b.payment_hold_expires_at, b.created_at,
+        v.id::text as venue_id, v.slug as venue_slug, v.title as venue_title,
+        b.city, v.address as venue_address, v.payment_methods,
+        v.publication_status, v.partner_mode,
+        ${BOOKING_PAYMENT_STATUS_SELECT},
+        0::int as unread_messages
+      from bookings b
+      join venues v on v.id = b.venue_id
+      where ($1::uuid is null or b.id = $1::uuid)
+      order by b.created_at desc
+      limit 200
+    `, [bookingId]);
+    return result.rows;
+  }
+
   private async clientRows(clientId: string, bookingId: string | null): Promise<BookingRow[]> {
     const result = await this.pool.query<BookingRow>(`/* rooms:list-client-bookings */
       select b.id::text, b.public_number, b.status, b.client_id::text, b.client_name,
@@ -1041,6 +1328,7 @@ export class PostgresBookingRepository implements BookingRepository {
         v.id::text as venue_id, v.slug as venue_slug, v.title as venue_title,
         b.city, v.address as venue_address, v.payment_methods,
         v.publication_status, v.partner_mode,
+        ${BOOKING_PAYMENT_STATUS_SELECT},
         (
           select count(*)::int from booking_messages message
           where message.booking_id = b.id and message.visible_to_client
@@ -1082,6 +1370,7 @@ export class PostgresBookingRepository implements BookingRepository {
         v.id::text as venue_id, v.slug as venue_slug, v.title as venue_title,
         b.city, v.address as venue_address, v.payment_methods,
         v.publication_status, v.partner_mode,
+        ${BOOKING_PAYMENT_STATUS_SELECT},
         (
           select count(*)::int from booking_messages message
           where message.booking_id = b.id and message.visible_to_partner
@@ -1224,6 +1513,7 @@ export class PostgresBookingRepository implements BookingRepository {
       },
       proposal: proposals.get(row.id) ?? null,
       unreadMessages: Number(row.unread_messages) || 0,
+      paymentStatus: row.payment_status,
       paymentHoldExpiresAt: row.payment_hold_expires_at === null ? null : iso(row.payment_hold_expires_at),
       createdAt: iso(row.created_at),
     }));

@@ -155,6 +155,11 @@ export interface PartnerCatalogRepository {
     input: PartnerPhotoWrite,
   ): Promise<PartnerPhotoRecord | null>;
   removePhoto(venueId: string, photoId: string, actorId: string): Promise<boolean>;
+  reorderPhotos(
+    venueId: string,
+    actorId: string,
+    photoIds: string[],
+  ): Promise<PartnerPhotoRecord[] | null>;
   setScheduleException(
     venueId: string,
     actorId: string,
@@ -518,6 +523,23 @@ function partnerVisiblePhotos(photos: PartnerPhotoRecord[], change: PartnerModer
   return photos.filter((photo) => photo.status === "published");
 }
 
+function reorderedPhotoSnapshot(photos: PartnerPhotoRecord[], photoIds: string[]): PartnerPhotoRecord[] {
+  const requested = new Set(photoIds);
+  if (!photoIds.length || requested.size !== photoIds.length || photos.length !== photoIds.length
+    || photos.some((photo) => !requested.has(photo.id))) {
+    throw new PartnerCatalogError(
+      "PHOTO_ORDER_INVALID",
+      "Порядок фотографий устарел. Обновите кабинет и попробуйте ещё раз.",
+    );
+  }
+  const byId = new Map(photos.map((photo) => [photo.id, photo]));
+  return photoIds.map((id, index) => ({
+    ...byId.get(id)!,
+    sortOrder: index,
+    isCover: index === 0,
+  }));
+}
+
 function defaultWeekSchedule(opensAtHour = 10, closesAtHour = 24): PartnerWeekScheduleDay[] {
   return Array.from({ length: 7 }, (_, index) => ({
     weekday: index + 1,
@@ -818,6 +840,26 @@ export class MemoryPartnerCatalogRepository implements PartnerCatalogRepository 
       { photos: photoSnapshot(proposed) },
     );
     return true;
+  }
+
+  async reorderPhotos(venueId: string, actorId: string, photoIds: string[]): Promise<PartnerPhotoRecord[] | null> {
+    const first = this.photoRecords.get(photoIds[0] ?? "");
+    if (!first || first.venueId !== venueId) return null;
+    const currentChange = first.roomId
+      ? this.roomModeration.get(first.roomId) ?? null
+      : this.venueModeration.get(venueId) ?? null;
+    const all = this.memoryTargetPhotos(venueId, first.roomId);
+    const visible = partnerVisiblePhotos(all, currentChange);
+    const proposed = reorderedPhotoSnapshot(visible, photoIds);
+    this.queueMemoryModeration(
+      first.roomId ? "room" : "venue",
+      first.roomId ?? venueId,
+      venueId,
+      actorId,
+      { photos: photoSnapshot(all.filter((photo) => photo.status === "published")) },
+      { photos: photoSnapshot(proposed) },
+    );
+    return structuredClone(proposed);
   }
 
   async setScheduleException(
@@ -1329,6 +1371,62 @@ export class PostgresPartnerCatalogRepository implements PartnerCatalogRepositor
       });
       await client.query("commit");
       return true;
+    } catch (error) {
+      await client.query("rollback");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async reorderPhotos(venueId: string, actorId: string, photoIds: string[]): Promise<PartnerPhotoRecord[] | null> {
+    const client = await this.pool.connect();
+    try {
+      await client.query("begin");
+      const ownerResult = await client.query<PhotoRow & { owner_venue_id: string }>(`/* rooms:lock-photo-order */
+        select p.id::text, p.room_id::text, p.venue_id::text, p.original_url, p.landscape_url,
+          p.portrait_url, p.width, p.height, p.sort_order, p.is_cover, p.status::text, p.created_at,
+          p.storage_key::text, coalesce(p.venue_id, room.venue_id)::text as owner_venue_id
+        from room_photos p left join rooms room on room.id = p.room_id
+        where p.id = $1::uuid and coalesce(p.venue_id, room.venue_id) = $2::uuid and p.status <> 'hidden'
+        for update of p
+      `, [photoIds[0], venueId]);
+      const owner = ownerResult.rows[0];
+      if (!owner) {
+        await client.query("rollback");
+        return null;
+      }
+      const targetColumn = owner.room_id ? "room_id" : "venue_id";
+      const targetId = owner.room_id ?? venueId;
+      await client.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [`${targetColumn}:${targetId}`]);
+      const [photosResult, moderationResult] = await Promise.all([
+        client.query<PhotoRow>(`select p.id::text, p.room_id::text, p.venue_id::text, p.original_url,
+          p.landscape_url, p.portrait_url, p.width, p.height, p.sort_order, p.is_cover,
+          p.status::text, p.created_at, p.storage_key::text
+          from room_photos p where p.${targetColumn} = $1::uuid and p.status <> 'hidden'
+          order by p.is_cover desc, p.sort_order, p.created_at`, [targetId]),
+        client.query<ModerationRow>(`select id::text, room_id::text, fields, before_data, proposed_data, created_at
+          from moderation_requests where ${targetColumn} = $1::uuid and status = 'pending'
+          order by created_at desc limit 1`, [targetId]),
+      ]);
+      const current = photosResult.rows.map(photoFromRow);
+      const visible = partnerVisiblePhotos(current, moderationFromRow(moderationResult.rows[0]));
+      const proposed = reorderedPhotoSnapshot(visible, photoIds);
+      await this.upsertModeration(
+        client,
+        { venueId: owner.room_id ? null : venueId, roomId: owner.room_id },
+        actorId,
+        { photos: photoSnapshot(current.filter((photo) => photo.status === "published")) },
+        { photos: photoSnapshot(proposed) },
+      );
+      await this.audit(client, actorId, "partner_photos_reordered", owner.room_id ? "room" : "venue", targetId, {
+        photoIds: visible.map((photo) => photo.id),
+      }, {
+        photoIds,
+        coverPhotoId: photoIds[0],
+      });
+      await client.query("commit");
+      return proposed;
     } catch (error) {
       await client.query("rollback");
       throw error;

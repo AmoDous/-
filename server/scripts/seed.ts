@@ -7,6 +7,13 @@ import { postgresPoolConfig } from "../src/storage.js";
 if (process.env.ALLOW_DEMO_SEED !== "true") {
   throw new Error("Set ALLOW_DEMO_SEED=true to confirm loading Rooms demo data.");
 }
+if (process.env.NODE_ENV === "production") {
+  throw new Error("Rooms demo seed is disabled in production.");
+}
+
+const demoPartnerPassword = process.env.DEMO_PARTNER_PASSWORD?.trim() || "rooms2026";
+const demoAdminPassword = process.env.DEMO_ADMIN_PASSWORD?.trim() || "rooms2026";
+const demoAccountantPassword = process.env.DEMO_ACCOUNTANT_PASSWORD?.trim() || "rooms2026";
 
 function hourToTime(value: number): string {
   const normalized = ((value % 24) + 24) % 24;
@@ -71,7 +78,7 @@ async function seedRoom(client: PoolClient, room: (typeof demoRooms)[number]): P
 }
 
 async function seedDemoPartner(client: PoolClient): Promise<void> {
-  const passwordHash = await hashPassword("rooms2026");
+  const passwordHash = await hashPassword(demoPartnerPassword);
   const result = await client.query<{ id: string }>(`
     insert into users (id, role, name, email, city, password_hash, password_reset_required)
     values ('50000000-0000-4000-8000-000000000001','partner','Менеджер Kids Loft','manager@kids-loft.ru','Воронеж',$1,false)
@@ -89,12 +96,24 @@ async function seedDemoPartner(client: PoolClient): Promise<void> {
 }
 
 async function seedDemoAdmin(client: PoolClient): Promise<void> {
-  const passwordHash = await hashPassword(process.env.DEMO_ADMIN_PASSWORD?.trim() || "rooms2026");
+  const passwordHash = await hashPassword(demoAdminPassword);
   await client.query(`
     insert into users (id, role, name, email, city, password_hash, password_reset_required)
     values ('50000000-0000-4000-8000-000000000002','admin','Игорь','admin@rooms.ru','Воронеж',$1,false)
     on conflict (email) do update set
       role = 'admin', name = excluded.name, city = excluded.city,
+      password_hash = excluded.password_hash, password_reset_required = false,
+      blocked_at = null, updated_at = now()
+  `, [passwordHash]);
+}
+
+async function seedDemoAccountant(client: PoolClient): Promise<void> {
+  const passwordHash = await hashPassword(demoAccountantPassword);
+  await client.query(`
+    insert into users (id, role, name, email, city, password_hash, password_reset_required)
+    values ('50000000-0000-4000-8000-000000000003','accountant','Бухгалтер Rooms','accountant@rooms.ru','Воронеж',$1,false)
+    on conflict (email) do update set
+      role = 'accountant', name = excluded.name, city = excluded.city,
       password_hash = excluded.password_hash, password_reset_required = false,
       blocked_at = null, updated_at = now()
   `, [passwordHash]);
@@ -140,7 +159,7 @@ async function seedReview(client: PoolClient, review: (typeof demoReviews)[numbe
   `, [
     bookingId, `DEMO-${String(index + 1).padStart(4, "0")}`, userId, venue.id, review.authorName,
     phone, venue.city, room.type, "Демо-посещение", Math.min(room.capacityMax, 8), startsAt, endsAt,
-    total, prepayment, commission, total - commission, total - prepayment,
+    total, prepayment, commission, Math.max(0, prepayment - commission), total - prepayment,
   ]);
   await client.query(`
     insert into booking_rooms (booking_id, room_id, title_snapshot, price_per_hour_snapshot, amount, is_primary)
@@ -168,10 +187,11 @@ try {
   for (const venue of demoVenues) await seedVenue(client, venue);
   await seedDemoPartner(client);
   await seedDemoAdmin(client);
+  await seedDemoAccountant(client);
   for (const room of demoRooms) await seedRoom(client, room);
   for (const [index, review] of demoReviews.entries()) await seedReview(client, review, index);
   await client.query("commit");
-  console.log(`Seeded ${demoVenues.length} venues, ${demoRooms.length} rooms, ${demoReviews.length} reviews, the demo partner and admin.`);
+  console.log(`Seeded ${demoVenues.length} venues, ${demoRooms.length} rooms, ${demoReviews.length} reviews, the demo partner, admin and accountant.`);
 } catch (error) {
   await client.query("rollback");
   throw error;

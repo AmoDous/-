@@ -6,6 +6,8 @@ assets-pages/
 *.tmp
 *.log
 server/node_modules/
+.npm-cache/
+server/.npm-cache/
 server/dist/
 server/coverage/
 server/.env

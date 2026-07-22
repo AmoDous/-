@@ -124,6 +124,33 @@ test("partner uploads a room photo into moderation and the generated file is ser
     assert.equal(room.photos.at(-1).status, "review");
     assert.ok(room.pendingChange.fields.includes("photos"));
 
+    const incompleteOrder = await app.inject({
+      method: "PATCH",
+      url: "/v1/partner/photos/order",
+      headers: partnerHeaders,
+      payload: { photoIds: [upload.json().id] },
+    });
+    assert.equal(incompleteOrder.statusCode, 409);
+    assert.equal(incompleteOrder.json().code, "PHOTO_ORDER_INVALID");
+
+    const photoIds = [
+      upload.json().id,
+      ...room.photos.filter((photo: { id: string }) => photo.id !== upload.json().id).map((photo: { id: string }) => photo.id),
+    ];
+    const reordered = await app.inject({
+      method: "PATCH",
+      url: "/v1/partner/photos/order",
+      headers: partnerHeaders,
+      payload: { photoIds },
+    });
+    assert.equal(reordered.statusCode, 202);
+    assert.equal(reordered.json().photos[0].id, upload.json().id);
+    assert.equal(reordered.json().photos[0].isCover, true);
+    const pendingOrder = await app.inject({ method: "GET", url: "/v1/partner/rooms", headers: partnerHeaders });
+    const pendingRoom = pendingOrder.json().find((item: { id: string }) => item.id === roomIds.kosmos);
+    assert.equal(pendingRoom.photos[0].id, upload.json().id);
+    assert.equal(pendingRoom.photos[0].sortOrder, 0);
+
     const adminLogin = await app.inject({
       method: "POST",
       url: "/v1/auth/login",
@@ -141,7 +168,10 @@ test("partner uploads a room photo into moderation and the generated file is ser
     });
     assert.equal(approved.statusCode, 200);
     const after = await app.inject({ method: "GET", url: "/v1/partner/rooms", headers: partnerHeaders });
-    assert.equal(after.json().find((item: { id: string }) => item.id === roomIds.kosmos).photos.at(-1).status, "published");
+    const approvedRoom = after.json().find((item: { id: string }) => item.id === roomIds.kosmos);
+    assert.equal(approvedRoom.photos[0].id, upload.json().id);
+    assert.equal(approvedRoom.photos[0].status, "published");
+    assert.equal(approvedRoom.photos[0].isCover, true);
   } finally {
     await app.close();
   }

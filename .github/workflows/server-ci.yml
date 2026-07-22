@@ -1,0 +1,49 @@
+name: Rooms server checks
+
+on:
+  pull_request:
+    paths:
+      - "server/**"
+      - "docs/migrations/**"
+      - "docs/openapi.yaml"
+      - ".github/workflows/server-ci.yml"
+  push:
+    branches: [main]
+    paths:
+      - "server/**"
+      - "docs/migrations/**"
+      - "docs/openapi.yaml"
+      - ".github/workflows/server-ci.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: server-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Use Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Test
+        run: npm test
+      - name: Build
+        run: npm run build
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high

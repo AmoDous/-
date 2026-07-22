@@ -33,10 +33,117 @@ test("local preview serves the current site and its room photography", async () 
   assert.equal(page.statusCode, 200);
   assert.match(page.headers["content-type"] ?? "", /text\/html/);
   assert.match(page.body, /Rooms/);
+  const venuePage = await app.inject({ method: "GET", url: "/venues/kids-loft" });
+  assert.equal(venuePage.statusCode, 200);
+  assert.match(venuePage.headers["content-type"] ?? "", /text\/html/);
+  assert.match(venuePage.body, /function venueRouteState/);
+  const catalogPage = await app.inject({ method: "GET", url: "/catalog?city=%D0%92%D0%BE%D1%80%D0%BE%D0%BD%D0%B5%D0%B6&guests=12" });
+  assert.equal(catalogPage.statusCode, 200);
+  assert.match(catalogPage.body, /<title>Каталог помещений — Rooms<\/title>/);
+  assert.match(catalogPage.body, /<link rel="canonical" href="http:\/\/localhost(?::80)?\/catalog">/);
+  const partnerApplyPage = await app.inject({ method: "GET", url: "/for-partners" });
+  assert.equal(partnerApplyPage.statusCode, 200);
+  assert.match(partnerApplyPage.body, /<title>Добавить площадку — Rooms<\/title>/);
+  assert.match(partnerApplyPage.body, /<link rel="canonical" href="http:\/\/localhost(?::80)?\/for-partners">/);
+  assert.doesNotMatch(partnerApplyPage.body, /data-rooms-private="true"/);
+  const accountPage = await app.inject({ method: "GET", url: "/account" });
+  assert.equal(accountPage.statusCode, 200);
+  assert.match(accountPage.body, /<title>Личный кабинет — Rooms<\/title>/);
+  assert.match(accountPage.body, /<meta name="robots" content="noindex,nofollow" data-rooms-private="true">/);
+  const partnerPage = await app.inject({ method: "GET", url: "/partner" });
+  assert.equal(partnerPage.statusCode, 200);
+  assert.match(partnerPage.body, /<title>Кабинет партнёра — Rooms<\/title>/);
+  assert.match(partnerPage.body, /<meta name="robots" content="noindex,nofollow" data-rooms-private="true">/);
+  const adminPage = await app.inject({ method: "GET", url: "/admin" });
+  assert.equal(adminPage.statusCode, 200);
+  assert.match(adminPage.body, /<title>Админка — Rooms<\/title>/);
+  assert.match(adminPage.body, /<meta name="robots" content="noindex,nofollow" data-rooms-private="true">/);
+  const accountingPage = await app.inject({ method: "GET", url: "/accounting" });
+  assert.equal(accountingPage.statusCode, 200);
+  assert.match(accountingPage.body, /<title>Бухгалтерия — Rooms<\/title>/);
+  assert.match(accountingPage.body, /<meta name="robots" content="noindex,nofollow" data-rooms-private="true">/);
+  const roomPage = await app.inject({ method: "GET", url: "/venues/kids-loft/rooms/kosmos" });
+  assert.equal(roomPage.statusCode, 200);
+  assert.match(roomPage.headers["content-type"] ?? "", /text\/html/);
+  assert.equal(roomPage.headers["cache-control"], "no-store");
+  assert.match(roomPage.body, /<base href="\/">/);
+  assert.match(roomPage.body, /<meta name="rooms-routing" content="path">/);
+  assert.match(roomPage.body, /<title>Комната Космос в Kids Loft — Rooms<\/title>/);
+  assert.match(roomPage.body, /<meta property="og:image" content="https:\/\/amodous\.github\.io\/Rooms-bron\/assets\/kids-loft\.jpg">/);
+  assert.match(roomPage.body, /<link rel="canonical" href="http:\/\/localhost(?::80)?\/venues\/kids-loft\/rooms\/kosmos">/);
+  const unknownVenue = await app.inject({ method: "GET", url: "/venues/not-a-real-venue" });
+  assert.equal(unknownVenue.statusCode, 404);
+  assert.match(unknownVenue.headers["content-type"] ?? "", /text\/html/);
   const photo = await app.inject({ method: "GET", url: "/assets/kids-loft.jpg" });
   assert.equal(photo.statusCode, 200);
   assert.match(photo.headers["content-type"] ?? "", /image\/jpeg/);
   assert.ok(photo.rawPayload.length > 1000);
+});
+
+test("production responses include defensive headers and auth responses are not cached", async () => {
+  const productionApp = buildApp({ logger: false, productionMode: true, secureCookies: true });
+  await productionApp.ready();
+  try {
+    const health = await productionApp.inject({ method: "GET", url: "/health" });
+    assert.equal(health.headers["x-content-type-options"], "nosniff");
+    assert.equal(health.headers["x-frame-options"], "DENY");
+    assert.equal(health.headers["referrer-policy"], "strict-origin-when-cross-origin");
+    assert.equal(health.headers["permissions-policy"], "camera=(), microphone=(), geolocation=()");
+    assert.equal(health.headers["strict-transport-security"], "max-age=31536000; includeSubDomains");
+
+    const login = await productionApp.inject({
+      method: "POST",
+      url: "/v1/auth/login",
+      payload: { login: "missing@rooms.test", password: "wrong-password" },
+    });
+    assert.equal(login.headers["cache-control"], "no-store");
+    assert.equal(login.headers.pragma, "no-cache");
+  } finally {
+    await productionApp.close();
+  }
+});
+
+test("login limiter blocks distributed guessing against the same account", async () => {
+  const limiterApp = buildApp({ logger: false });
+  await limiterApp.ready();
+  try {
+    const registration = {
+      name: "Клиент лимитера",
+      email: "limiter.client@rooms.test",
+      phone: "+7 900 100-20-30",
+      city: "Воронеж",
+      password: "limiter-right-2026",
+      legal: {
+        termsVersion: "test-1",
+        privacyVersion: "test-1",
+        acceptedAt: new Date().toISOString(),
+      },
+    };
+    const created = await limiterApp.inject({ method: "POST", url: "/v1/auth/client/register", payload: registration });
+    assert.equal(created.statusCode, 201);
+
+    const loginVariants = [registration.phone, "8 (900) 100-20-30", "79001002030", "9001002030", "+7-900-100-20-30"];
+    for (let attempt = 1; attempt <= 5; attempt += 1) {
+      const wrong = await limiterApp.inject({
+        method: "POST",
+        url: "/v1/auth/login",
+        remoteAddress: `198.51.100.${attempt}`,
+        payload: { login: loginVariants[attempt - 1], password: `wrong-${attempt}` },
+      });
+      assert.equal(wrong.statusCode, 401);
+    }
+
+    const blocked = await limiterApp.inject({
+      method: "POST",
+      url: "/v1/auth/login",
+      remoteAddress: "203.0.113.10",
+      payload: { login: "+7 900 100 20 30", password: registration.password },
+    });
+    assert.equal(blocked.statusCode, 429);
+    assert.equal(blocked.headers["retry-after"], "600");
+  } finally {
+    await limiterApp.close();
+  }
 });
 
 test("cities include pilot Voronezh and Moscow", async () => {

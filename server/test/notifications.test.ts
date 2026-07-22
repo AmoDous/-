@@ -18,8 +18,11 @@ test("notification payloads are authenticated and encrypted", () => {
   assert.match(encrypted, /^enc:v1:/);
   assert.doesNotMatch(encrypted, /rooms\.test/);
   assert.equal(cipher.decrypt(encrypted), "Секретная ссылка https://rooms.test/reset/token");
-  const last = encrypted.at(-1);
-  const tampered = `${encrypted.slice(0, -1)}${last === "A" ? "B" : "A"}`;
+  const parts = encrypted.split(":");
+  const encryptedPayload = parts[4]!;
+  const position = Math.floor(encryptedPayload.length / 2);
+  parts[4] = `${encryptedPayload.slice(0, position)}${encryptedPayload[position] === "A" ? "B" : "A"}${encryptedPayload.slice(position + 1)}`;
+  const tampered = parts.join(":");
   assert.throws(() => cipher.decrypt(tampered));
 });
 

@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Rooms API
-  version: 0.6.0
+  version: 0.12.0
   description: |
     Contract for the Rooms MVP backend. GitHub Pages remains a static frontend;
     the local Fastify service provides PostgreSQL-backed API endpoints.
@@ -17,6 +17,7 @@ tags:
   - name: Partner
   - name: Admin
   - name: Payments
+  - name: Accounting
 
 paths:
   /health:
@@ -430,6 +431,43 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/NotificationDelivery'
+  /v1/me/reviews:
+    get:
+      tags: [Client]
+      operationId: listCurrentClientReviews
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Reviews submitted by the authenticated client, including moderation feedback
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/ReviewRecord'}
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/me/support:
+    get:
+      tags: [Client]
+      operationId: listCurrentClientSupportCases
+      security:
+        - bearerAuth: []
+      parameters:
+        - {name: status, in: query, schema: {type: string, enum: [open, working, closed, all]}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 200, default: 80}}
+      responses:
+        '200':
+          description: Support cases for bookings owned by the authenticated client
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/SupportCase'}
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
   /v1/bookings:
     get:
       tags: [Client]
@@ -511,6 +549,51 @@ paths:
               schema:
                 $ref: '#/components/schemas/Booking'
 
+  /v1/bookings/{bookingId}/complete:
+    post:
+      tags: [Client]
+      operationId: completeClientBooking
+      description: Marks a paid booking as completed after its end time and unlocks review submission.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/BookingId'
+      responses:
+        '200':
+          description: Completed booking
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Booking'}
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /v1/bookings/{bookingId}/review:
+    post:
+      tags: [Client]
+      operationId: submitBookingReview
+      description: Creates one pending review for a completed booking, or resubmits its rejected review.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/BookingId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ReviewSubmit'}
+      responses:
+        '201':
+          description: Review queued for moderation
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ReviewRecord'}
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
   /v1/bookings/{bookingId}/messages:
     get:
       tags: [Client, Partner]
@@ -557,6 +640,81 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+
+  /v1/bookings/{bookingId}/support:
+    get:
+      tags: [Client, Partner, Admin]
+      operationId: listBookingSupportCases
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/BookingId'
+      responses:
+        '200':
+          description: Support history visible to the authenticated booking participant
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/SupportCase'}
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      tags: [Client, Partner, Admin]
+      operationId: openBookingSupportCase
+      description: Opens a case or appends the message to the current non-closed case for this booking.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/BookingId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [topic, body]
+              properties:
+                topic: {type: string, minLength: 3, maxLength: 200}
+                body: {type: string, minLength: 5, maxLength: 3000}
+      responses:
+        '201':
+          description: Support case created or updated
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/SupportCase'}
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/support/{supportId}/messages:
+    post:
+      tags: [Client, Partner, Admin]
+      operationId: createSupportMessage
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SupportId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [body]
+              properties:
+                body: {type: string, minLength: 5, maxLength: 3000}
+      responses:
+        '201':
+          description: Message appended to the support case
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/SupportCase'}
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
 
   /v1/bookings/{bookingId}/proposal/accept:
     post:
@@ -636,7 +794,7 @@ paths:
         - $ref: '#/components/parameters/BookingId'
       responses:
         '201':
-          description: Server-calculated Sber payment intent
+          description: Server-calculated payment intent; an external provider returns a hosted payment page URL
           content:
             application/json:
               schema:
@@ -678,17 +836,376 @@ paths:
     post:
       tags: [Payments]
       operationId: handleSberWebhook
-      parameters:
-        - {name: X-Sber-Signature, in: header, required: true, schema: {type: string}}
+      description: The callback is never trusted by itself. Rooms queries getOrderStatusExtended server-to-server before changing payment or booking state.
       requestBody:
         required: true
         content:
           application/json:
-            schema: {type: object, additionalProperties: true}
+            schema:
+              type: object
+              additionalProperties: false
+              required: [mdOrder, orderNumber, operation, status]
+              properties:
+                mdOrder: {type: string, format: uuid}
+                orderNumber: {type: string, minLength: 1, maxLength: 36}
+                operation:
+                  type: string
+                  enum: [created, approved, deposited, reversed, refunded, declinedByTimeout, subscriptionCreated]
+                status: {type: integer, minimum: 0, maximum: 1}
+                additionalParams: {type: object, additionalProperties: true}
       responses:
-        '204': {description: Event processed idempotently}
-        '401':
-          $ref: '#/components/responses/Unauthorized'
+        '200':
+          description: Event verified and processed idempotently
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status: {type: string, const: ok}
+        '409':
+          description: Provider order or deposited amount does not match the Rooms transaction
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
+        '502':
+          description: The bank status could not be verified
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
+
+  /v1/partner/bank-account:
+    get:
+      tags: [Partner]
+      operationId: getPartnerBankAccount
+      description: Returns only masked requisites. The full settlement account is never exposed by the API.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Masked bank account assigned to the partner venue
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/BankAccount'}
+        '404': {$ref: '#/components/responses/NotFound'}
+    put:
+      tags: [Partner]
+      operationId: updatePartnerBankAccount
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/PartnerBankAccountWrite'}
+      responses:
+        '200':
+          description: Requisites encrypted at rest and returned in masked form; verification is reset
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/BankAccount'}
+        '404': {$ref: '#/components/responses/NotFound'}
+
+  /v1/partner/payouts:
+    get:
+      tags: [Partner]
+      operationId: listPartnerPayouts
+      security:
+        - bearerAuth: []
+      parameters:
+        - {name: status, in: query, schema: {type: string, enum: [draft, sent, paid, cancelled, all], default: all}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 200, default: 80}}
+      responses:
+        '200':
+          description: Payout batches belonging only to the authenticated partner venue
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/PayoutBatch'}
+
+  /v1/accounting/overview:
+    get:
+      tags: [Accounting]
+      operationId: getFinanceOverview
+      description: Available to accountant and admin roles.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Aggregated payout and refund amounts
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/FinanceOverview'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+
+  /v1/accounting/receipts:
+    get:
+      tags: [Accounting]
+      operationId: listFiscalReceipts
+      description: Durable online-cash-register queue and fiscal receipt history. Available to accountant and admin roles.
+      security:
+        - bearerAuth: []
+      parameters:
+        - {name: status, in: query, schema: {type: string, enum: [queued, processing, succeeded, failed, cancelled, all], default: all}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 200, default: 80}}
+      responses:
+        '200':
+          description: Fiscal receipt queue and history
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/FiscalReceipt'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+
+  /v1/accounting/receipts/{receiptId}/retry:
+    post:
+      tags: [Accounting]
+      operationId: retryFiscalReceipt
+      description: Requeues a failed or manually cancelled fiscal receipt and resets its attempt counter. The action is audited.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: receiptId
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      responses:
+        '202':
+          description: Receipt returned to the cash-register queue
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/FiscalReceiptAction'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+
+  /v1/accounting/receipts/{receiptId}/cancel:
+    post:
+      tags: [Accounting]
+      operationId: cancelFiscalReceipt
+      description: Cancels a queued or failed receipt before it is claimed by a cash-register worker. The action is audited.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: receiptId
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      responses:
+        '200':
+          description: Receipt job cancelled
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/FiscalReceiptAction'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+
+  /v1/accounting/bank-accounts:
+    get:
+      tags: [Accounting]
+      operationId: listVenueBankAccounts
+      security:
+        - bearerAuth: []
+      parameters:
+        - {name: status, in: query, schema: {type: string, enum: [pending, verified, all], default: all}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 200, default: 80}}
+      responses:
+        '200':
+          description: Masked venue bank requisites
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/BankAccount'}
+
+  /v1/accounting/bank-accounts/{venueId}/verify:
+    post:
+      tags: [Accounting]
+      operationId: verifyVenueBankAccount
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: venueId
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      responses:
+        '200':
+          description: Requisites verified and venue payouts unblocked
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/BankAccount'}
+        '404': {$ref: '#/components/responses/NotFound'}
+
+  /v1/accounting/refunds:
+    get:
+      tags: [Accounting]
+      operationId: listRefunds
+      security:
+        - bearerAuth: []
+      parameters:
+        - {name: status, in: query, schema: {type: string, enum: [refund_pending, refunded, failed, all], default: all}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 200, default: 80}}
+      responses:
+        '200':
+          description: Refund queue and history
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/Refund'}
+
+  /v1/accounting/refunds/{refundId}/complete:
+    post:
+      tags: [Accounting]
+      operationId: completeRefund
+      deprecated: true
+      description: Manual completion for the local demo provider only. Live Sber refunds are completed exclusively by the refund worker after bank verification.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: refundId
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                providerOperationId: {type: string, minLength: 3, maxLength: 200}
+      responses:
+        '200':
+          description: Refund completed idempotently and client notification queued
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Refund'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+
+  /v1/accounting/refunds/{refundId}/retry:
+    post:
+      tags: [Accounting]
+      operationId: retryRefund
+      description: Requeues a failed automatic refund. A previously submitted refund is checked at the bank and is not submitted twice.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: refundId
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      responses:
+        '202':
+          description: Refund returned to the automatic queue
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, status]
+                properties:
+                  id: {type: string, format: uuid}
+                  status: {type: string, const: refund_pending}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+
+  /v1/accounting/payout-candidates:
+    get:
+      tags: [Accounting]
+      operationId: listPayoutCandidates
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Completed paid bookings with payout readiness or a blocking reason
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/PayoutCandidate'}
+
+  /v1/accounting/payouts:
+    get:
+      tags: [Accounting]
+      operationId: listPayouts
+      security:
+        - bearerAuth: []
+      parameters:
+        - {name: status, in: query, schema: {type: string, enum: [draft, sent, paid, cancelled, all], default: all}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 200, default: 80}}
+      responses:
+        '200':
+          description: Cross-venue payout batches
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/PayoutBatch'}
+    post:
+      tags: [Accounting]
+      operationId: createPayouts
+      description: Groups eligible bookings by venue and creates sent payout batches atomically.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                bookingIds:
+                  type: array
+                  minItems: 1
+                  maxItems: 200
+                  uniqueItems: true
+                  items: {type: string, format: uuid}
+                scheduledFor: {type: string, format: date}
+      responses:
+        '201':
+          description: Payout batches created and partner notifications queued
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/PayoutBatch'}
+        '409': {$ref: '#/components/responses/Conflict'}
+
+  /v1/accounting/payouts/{payoutId}/complete:
+    post:
+      tags: [Accounting]
+      operationId: completePayout
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: payoutId
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                providerOperationId: {type: string, minLength: 3, maxLength: 200}
+      responses:
+        '200':
+          description: Payout completed idempotently and partner notification queued
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PayoutBatch'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
 
   /v1/partner/moderation:
     get:
@@ -987,6 +1504,92 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /v1/partner/support:
+    get:
+      tags: [Partner]
+      operationId: listPartnerSupportCases
+      security:
+        - bearerAuth: []
+      parameters:
+        - {name: status, in: query, schema: {type: string, enum: [open, working, closed, all]}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 200, default: 80}}
+      responses:
+        '200':
+          description: Support cases for venues managed by the current partner
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/SupportCase'}
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/partner/reviews:
+    get:
+      tags: [Partner]
+      operationId: listPartnerReviews
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Published reviews for venues managed by the current partner
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/ReviewRecord'}
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/partner/reviews/{reviewId}/reply:
+    patch:
+      tags: [Partner]
+      operationId: replyToPartnerReview
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ReviewId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [body]
+              properties:
+                body: {type: string, minLength: 3, maxLength: 1000}
+      responses:
+        '200':
+          description: Public partner reply saved
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ReviewRecord'}
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /v1/partner/bookings/{bookingId}/complete:
+    post:
+      tags: [Partner]
+      operationId: completePartnerBooking
+      description: Marks a paid booking as visited after its end time and unlocks the client review.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/BookingId'
+      responses:
+        '200':
+          description: Booking marked as visited
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Booking'}
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
   /v1/partner/bookings/{bookingId}/confirm:
     post:
       tags: [Partner]
@@ -1088,6 +1691,56 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /v1/admin/reviews:
+    get:
+      tags: [Admin]
+      operationId: listAdminReviews
+      security:
+        - bearerAuth: []
+      parameters:
+        - {name: status, in: query, schema: {type: string, enum: [pending, approved, rejected, all], default: all}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 200, default: 80}}
+      responses:
+        '200':
+          description: Review moderation queue and recent decisions
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/ReviewRecord'}
+        '403':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/admin/reviews/{reviewId}:
+    patch:
+      tags: [Admin]
+      operationId: moderateReview
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ReviewId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [status]
+              properties:
+                status: {type: string, enum: [pending, approved, rejected]}
+                comment: {type: string, maxLength: 1000, description: Required with at least 5 characters when rejected}
+      responses:
+        '200':
+          description: Review moderation status updated and room rating adjusted atomically
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ReviewRecord'}
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
   /v1/admin/moderation/{moderationId}/approve:
     post:
       tags: [Admin]
@@ -1150,6 +1803,100 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /v1/admin/bookings:
+    get:
+      tags: [Admin]
+      operationId: listAdminBookings
+      security:
+        - bearerAuth: []
+      parameters:
+        - {name: statusGroup, in: query, schema: {type: string, enum: [active, completed, cancelled, all], default: all}}
+      responses:
+        '200':
+          description: Cross-venue booking queue with contacts visible to Rooms
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/Booking'}
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/admin/bookings/{bookingId}/cancel:
+    post:
+      tags: [Admin]
+      operationId: cancelBookingByAdmin
+      description: Cancels the booking atomically, releases inventory and creates a refund review for a paid prepayment.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/BookingId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [reason]
+              properties:
+                reason: {type: string, minLength: 3, maxLength: 1000}
+      responses:
+        '200':
+          description: Booking cancelled
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Booking'}
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /v1/admin/support:
+    get:
+      tags: [Admin]
+      operationId: listAdminSupportCases
+      security:
+        - bearerAuth: []
+      parameters:
+        - {name: status, in: query, schema: {type: string, enum: [open, working, closed, all]}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 200, default: 80}}
+      responses:
+        '200':
+          description: Cross-venue support queue ordered by status and latest activity
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/SupportCase'}
+
+  /v1/admin/support/{supportId}:
+    patch:
+      tags: [Admin]
+      operationId: updateAdminSupportStatus
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SupportId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [status]
+              properties:
+                status: {type: string, enum: [open, working, closed]}
+      responses:
+        '200':
+          description: Support case status updated
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/SupportCase'}
+        '404':
+          $ref: '#/components/responses/NotFound'
+
   /v1/admin/notification-deliveries:
     get:
       tags: [Admin]
@@ -1211,6 +1958,16 @@ components:
       in: path
       required: true
       schema: {type: string, format: uuid}
+    ReviewId:
+      name: reviewId
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+    SupportId:
+      name: supportId
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
     ReservationId:
       name: reservationId
       in: path
@@ -1225,6 +1982,11 @@ components:
           schema: {$ref: '#/components/schemas/Error'}
     Unauthorized:
       description: Authentication failed or session expired
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Error'}
+    Forbidden:
+      description: Authenticated role is not allowed to perform this operation
       content:
         application/json:
           schema: {$ref: '#/components/schemas/Error'}
@@ -1631,6 +2393,38 @@ components:
         nextCursor: {type: [string, 'null']}
         hasMore: {type: boolean, const: false}
 
+    ReviewSubmit:
+      type: object
+      additionalProperties: false
+      required: [roomId, rating, body]
+      properties:
+        roomId: {type: string, format: uuid}
+        rating: {type: integer, minimum: 1, maximum: 5}
+        body: {type: string, minLength: 10, maxLength: 3000}
+
+    ReviewRecord:
+      type: object
+      required: [id, bookingId, roomId, roomSlug, roomTitle, venueId, venueTitle, authorName, rating, body, status, createdAt, updatedAt]
+      properties:
+        id: {type: string, format: uuid}
+        bookingId: {type: string, format: uuid}
+        roomId: {type: string, format: uuid}
+        roomSlug: {type: string}
+        roomTitle: {type: string}
+        venueId: {type: string, format: uuid}
+        venueTitle: {type: string}
+        clientId: {type: [string, 'null'], format: uuid}
+        authorName: {type: string}
+        rating: {type: integer, minimum: 1, maximum: 5}
+        body: {type: string}
+        status: {type: string, enum: [pending, approved, rejected]}
+        partnerReply: {type: [string, 'null']}
+        moderationComment: {type: [string, 'null']}
+        moderatedAt: {type: [string, 'null'], format: date-time}
+        publishedAt: {type: [string, 'null'], format: date-time}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+
     AvailabilityRequest:
       type: object
       required: [roomIds, date, durationMinutes]
@@ -1724,7 +2518,7 @@ components:
 
     Booking:
       type: object
-      required: [id, publicNumber, status, venue, rooms, startsAt, endsAt, guests, money, proposal, unreadMessages]
+      required: [id, publicNumber, status, venue, rooms, startsAt, endsAt, guests, money, proposal, unreadMessages, paymentStatus]
       properties:
         id: {type: string, format: uuid}
         publicNumber: {type: string}
@@ -1750,6 +2544,7 @@ components:
             - $ref: '#/components/schemas/BookingTimeProposal'
             - type: 'null'
         unreadMessages: {type: integer, minimum: 0}
+        paymentStatus: {type: string, enum: [unpaid, pending, paid, refund_pending, refunded]}
         paymentHoldExpiresAt: {type: [string, 'null'], format: date-time}
         createdAt: {type: string, format: date-time}
 
@@ -1765,6 +2560,38 @@ components:
           type: array
           uniqueItems: true
           items: {type: string, enum: [client, partner]}
+
+    SupportMessage:
+      type: object
+      required: [id, senderId, senderRole, body, createdAt]
+      properties:
+        id: {type: string, format: uuid}
+        senderId: {type: [string, 'null'], format: uuid}
+        senderRole: {type: string, enum: [client, partner, admin]}
+        body: {type: string}
+        createdAt: {type: string, format: date-time}
+
+    SupportCase:
+      type: object
+      required: [id, bookingId, publicNumber, venueTitle, roomTitle, startsAt, topic, status, openedBy, openedByRole, assignedTo, closedAt, createdAt, updatedAt, messages]
+      properties:
+        id: {type: string, format: uuid}
+        bookingId: {type: string, format: uuid}
+        publicNumber: {type: string}
+        venueTitle: {type: string}
+        roomTitle: {type: string}
+        startsAt: {type: string, format: date-time}
+        topic: {type: string}
+        status: {type: string, enum: [open, working, closed]}
+        openedBy: {type: [string, 'null'], format: uuid}
+        openedByRole: {type: string, enum: [client, partner, admin]}
+        assignedTo: {type: [string, 'null'], format: uuid}
+        closedAt: {type: [string, 'null'], format: date-time}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+        messages:
+          type: array
+          items: {$ref: '#/components/schemas/SupportMessage'}
 
     BookingTimeProposal:
       type: object
@@ -1843,12 +2670,12 @@ components:
 
     PaymentIntent:
       type: object
-      required: [paymentId, bookingId, status, provider, providerPaymentId, amount, currency, redirectUrl, expiresAt, createdAt]
+      required: [paymentId, bookingId, status, provider, providerPaymentId, amount, currency, redirectUrl, expiresAt, maskedCard, receiptNumber, receiptUrl, createdAt, paidAt]
       properties:
         paymentId: {type: string, format: uuid}
         bookingId: {type: string, format: uuid}
-        status: {type: string, enum: [pending, paid, failed]}
-        provider: {type: string, enum: [rooms_demo]}
+        status: {type: string, enum: [pending, paid, failed, refunded]}
+        provider: {type: string, enum: [rooms_demo, sber]}
         providerPaymentId: {type: string}
         amount: {type: number}
         currency: {type: string, const: RUB}
@@ -1856,8 +2683,154 @@ components:
         expiresAt: {type: string, format: date-time}
         maskedCard: {type: [string, 'null']}
         receiptNumber: {type: [string, 'null']}
+        receiptUrl: {type: [string, 'null'], format: uri}
         createdAt: {type: string, format: date-time}
         paidAt: {type: [string, 'null'], format: date-time}
+
+    FiscalReceipt:
+      type: object
+      required: [id, paymentId, bookingId, publicNumber, venueTitle, receiptType, status, amount, currency, provider, providerReceiptId, fiscalDocumentNumber, fiscalSign, receiptUrl, attempts, nextAttemptAt, lastError, completedAt, createdAt, updatedAt]
+      properties:
+        id: {type: string, format: uuid}
+        paymentId: {type: string, format: uuid}
+        bookingId: {type: string, format: uuid}
+        publicNumber: {type: string}
+        venueTitle: {type: string}
+        receiptType: {type: string, enum: [sale, refund]}
+        status: {type: string, enum: [queued, processing, succeeded, failed, cancelled]}
+        amount: {type: number, minimum: 0}
+        currency: {type: string, const: RUB}
+        provider: {type: [string, 'null']}
+        providerReceiptId: {type: [string, 'null']}
+        fiscalDocumentNumber: {type: [string, 'null']}
+        fiscalSign: {type: [string, 'null']}
+        receiptUrl: {type: [string, 'null'], format: uri}
+        attempts: {type: integer, minimum: 0}
+        nextAttemptAt: {type: [string, 'null'], format: date-time}
+        lastError: {type: [string, 'null']}
+        completedAt: {type: [string, 'null'], format: date-time}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+
+    FiscalReceiptAction:
+      type: object
+      required: [id, status]
+      properties:
+        id: {type: string, format: uuid}
+        status: {type: string, enum: [queued, cancelled]}
+
+    BankAccount:
+      type: object
+      description: Masked bank requisites. The full settlement account is encrypted and never returned.
+      required: [venueId, venueTitle, bankName, bik, accountLastFour, verifiedAt, updatedAt]
+      properties:
+        venueId: {type: string, format: uuid}
+        venueTitle: {type: string}
+        bankName: {type: [string, 'null']}
+        bik: {type: [string, 'null'], pattern: '^[0-9]{9}$'}
+        accountLastFour: {type: [string, 'null'], pattern: '^[0-9]{4}$'}
+        verifiedAt: {type: [string, 'null'], format: date-time}
+        updatedAt: {type: [string, 'null'], format: date-time}
+
+    PartnerBankAccountWrite:
+      type: object
+      additionalProperties: false
+      required: [bankName, bik, settlementAccount]
+      properties:
+        bankName: {type: string, minLength: 2, maxLength: 150}
+        bik: {type: string, pattern: '^[0-9]{9}$'}
+        settlementAccount: {type: string, pattern: '^[0-9]{20}$'}
+
+    Refund:
+      type: object
+      required: [id, paymentId, bookingId, publicNumber, venueId, venueTitle, clientName, amount, currency, provider, status, reason, providerRefundId, requestedBy, completedAt, attempts, nextAttemptAt, processingStartedAt, submittedAt, lastError, createdAt]
+      properties:
+        id: {type: string, format: uuid}
+        paymentId: {type: string, format: uuid}
+        bookingId: {type: string, format: uuid}
+        publicNumber: {type: string}
+        venueId: {type: string, format: uuid}
+        venueTitle: {type: string}
+        clientName: {type: string}
+        amount: {type: number, minimum: 0}
+        currency: {type: string, const: RUB}
+        provider: {type: string}
+        status: {type: string, enum: [refund_pending, refunded, failed]}
+        reason: {type: string}
+        providerRefundId: {type: [string, 'null']}
+        requestedBy: {type: [string, 'null'], format: uuid}
+        completedAt: {type: [string, 'null'], format: date-time}
+        attempts: {type: integer, minimum: 0}
+        nextAttemptAt: {type: [string, 'null'], format: date-time}
+        processingStartedAt: {type: [string, 'null'], format: date-time}
+        submittedAt: {type: [string, 'null'], format: date-time}
+        lastError: {type: [string, 'null']}
+        createdAt: {type: string, format: date-time}
+
+    PayoutCandidate:
+      type: object
+      required: [bookingId, publicNumber, venueId, venueTitle, startsAt, endsAt, prepayment, commission, amount, bankAccountVerified, accountLastFour, blockedReason]
+      properties:
+        bookingId: {type: string, format: uuid}
+        publicNumber: {type: string}
+        venueId: {type: string, format: uuid}
+        venueTitle: {type: string}
+        startsAt: {type: string, format: date-time}
+        endsAt: {type: string, format: date-time}
+        prepayment: {type: number, minimum: 0}
+        commission: {type: number, minimum: 0}
+        amount: {type: number, minimum: 0, description: Prepayment minus Rooms commission}
+        bankAccountVerified: {type: boolean}
+        accountLastFour: {type: [string, 'null'], pattern: '^[0-9]{4}$'}
+        blockedReason:
+          type: [string, 'null']
+          enum: [bank_account_missing, bank_account_unverified, support_open, refund_pending, nothing_to_pay, null]
+
+    PayoutItem:
+      type: object
+      required: [bookingId, publicNumber, startsAt, prepayment, commission, amount]
+      properties:
+        bookingId: {type: string, format: uuid}
+        publicNumber: {type: string}
+        startsAt: {type: string, format: date-time}
+        prepayment: {type: number, minimum: 0}
+        commission: {type: number, minimum: 0}
+        amount: {type: number, minimum: 0}
+
+    PayoutBatch:
+      type: object
+      required: [id, venueId, venueTitle, status, amount, scheduledFor, sentAt, paidAt, providerPayoutId, accountLastFour, createdBy, createdAt, items]
+      properties:
+        id: {type: string, format: uuid}
+        venueId: {type: string, format: uuid}
+        venueTitle: {type: string}
+        status: {type: string, enum: [draft, sent, paid, cancelled]}
+        amount: {type: number, minimum: 0}
+        scheduledFor: {type: [string, 'null'], format: date}
+        sentAt: {type: [string, 'null'], format: date-time}
+        paidAt: {type: [string, 'null'], format: date-time}
+        providerPayoutId: {type: [string, 'null']}
+        accountLastFour: {type: [string, 'null'], pattern: '^[0-9]{4}$'}
+        createdBy: {type: [string, 'null'], format: uuid}
+        createdAt: {type: string, format: date-time}
+        items:
+          type: array
+          minItems: 1
+          items: {$ref: '#/components/schemas/PayoutItem'}
+
+    FinanceOverview:
+      type: object
+      required: [expected, ready, sent, paid, refundPending, refunded, candidateCount, readyCount, refundPendingCount]
+      properties:
+        expected: {type: number, minimum: 0}
+        ready: {type: number, minimum: 0}
+        sent: {type: number, minimum: 0}
+        paid: {type: number, minimum: 0}
+        refundPending: {type: number, minimum: 0}
+        refunded: {type: number, minimum: 0}
+        candidateCount: {type: integer, minimum: 0}
+        readyCount: {type: integer, minimum: 0}
+        refundPendingCount: {type: integer, minimum: 0}
 
     NotificationSettings:
       type: object

@@ -17,7 +17,7 @@ const password = "rooms2026";
 const adminEmail = "admin@rooms.ru";
 const adminPassword = process.env.DEMO_ADMIN_PASSWORD?.trim() || "rooms2026";
 let smokeRoomId = "";
-let smokePhotoStorageKey = "";
+const smokePhotoStorageKeys: string[] = [];
 
 async function api<T>(path: string, options: { method?: string; token?: string; body?: unknown } = {}): Promise<T> {
   const response = await fetch(`${apiBaseUrl}${path}`, {
@@ -128,11 +128,25 @@ try {
   }).png().toBuffer();
   const photo = await apiPhoto<Record<string, any>>(`/v1/partner/rooms/${room.id}/photos`, token, photoSource);
   assert.equal(photo.status, "review");
-  smokePhotoStorageKey = String(photo.originalUrl).split("/")[2] || "";
-  assert.match(smokePhotoStorageKey, /^[0-9a-f-]{36}$/u);
+  smokePhotoStorageKeys.push(String(photo.originalUrl).split("/")[2] || "");
+  assert.match(smokePhotoStorageKeys[0] ?? "", /^[0-9a-f-]{36}$/u);
   const generatedPhoto = await fetch(`${apiBaseUrl}${photo.landscapeUrl}`);
   assert.equal(generatedPhoto.status, 200);
   assert.match(generatedPhoto.headers.get("content-type") ?? "", /image\/webp/u);
+  const secondPhotoSource = await sharp({
+    create: { width: 1400, height: 900, channels: 3, background: { r: 78, g: 113, b: 131 } },
+  }).png().toBuffer();
+  const secondPhoto = await apiPhoto<Record<string, any>>(`/v1/partner/rooms/${room.id}/photos`, token, secondPhotoSource);
+  smokePhotoStorageKeys.push(String(secondPhoto.originalUrl).split("/")[2] || "");
+  assert.match(smokePhotoStorageKeys[1] ?? "", /^[0-9a-f-]{36}$/u);
+  const reordered = await api<{ status: string; photos: Array<{ id: string; isCover: boolean; sortOrder: number }> }>(
+    "/v1/partner/photos/order",
+    { method: "PATCH", token, body: { photoIds: [secondPhoto.id, photo.id] } },
+  );
+  assert.equal(reordered.status, "review");
+  assert.deepEqual(reordered.photos.map((item) => item.id), [secondPhoto.id, photo.id]);
+  assert.equal(reordered.photos[0]?.isCover, true);
+  assert.equal(reordered.photos[0]?.sortOrder, 0);
   const editedRoom = await api<Record<string, any>>(`/v1/partner/rooms/${room.id}`, {
     method: "PATCH",
     token,
@@ -170,6 +184,8 @@ try {
   assert.equal(approvedRooms[0]?.title, "Smoke Room Edited");
   assert.equal(approvedRooms[0]?.publicationStatus, "published");
   assert.equal(approvedRooms[0]?.photos[0]?.status, "published");
+  assert.equal(approvedRooms[0]?.photos[0]?.id, secondPhoto.id);
+  assert.equal(approvedRooms[0]?.photos[0]?.isCover, true);
 
   const rejectedDraft = await api<Record<string, any>>(`/v1/partner/rooms/${room.id}`, {
     method: "PATCH",
@@ -210,8 +226,8 @@ try {
     or before_data->>'targetId' = $2 or before_data->>'targetId' = $3`, [userId, venueId, smokeRoomId]).catch(() => undefined);
   await pool.query("delete from venues where id = $1::uuid", [venueId]).catch(() => undefined);
   await pool.query("delete from users where id = $1::uuid", [userId]).catch(() => undefined);
-  if (smokePhotoStorageKey) {
-    await rm(resolve(process.env.MEDIA_STORAGE_DIR?.trim() || "server-data/media", smokePhotoStorageKey), { recursive: true, force: true });
+  for (const storageKey of smokePhotoStorageKeys) {
+    if (storageKey) await rm(resolve(process.env.MEDIA_STORAGE_DIR?.trim() || "server-data/media", storageKey), { recursive: true, force: true });
   }
   const cleanup = await pool.query<{ users: number; venues: number }>(`
     select

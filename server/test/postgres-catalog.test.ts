@@ -156,6 +156,18 @@ test("storage keeps the memory repository when DATABASE_URL is absent", async ()
   await storage.close();
 });
 
+test("external payments cannot start without durable PostgreSQL state", async () => {
+  await assert.rejects(
+    () => createCatalogStorage({
+      PAYMENT_PROVIDER: "sber",
+      SBER_API_BASE_URL: "https://ecomtest.sberbank.ru",
+      SBER_USERNAME: "rooms-test",
+      SBER_PASSWORD: "rooms-test-password",
+    }),
+    /DATABASE_URL is required/,
+  );
+});
+
 test("storage fails closed when a configured PostgreSQL database is unavailable", async () => {
   await assert.rejects(
     () => createCatalogStorage({
